@@ -46,6 +46,14 @@ Required server-side variables:
 
 The dashboard falls back to labeled mock values when configuration or snapshots are missing. Provider failures display `DEGRADED`; quotes older than 15 minutes display `STALE`. Live prices do not generate opportunity scores or trading decisions.
 
+## Database deployment
+
+Migrations are deployed from `main` by `.github/workflows/deploy-database.yml`. Configure the GitHub `production` environment with this repository secret:
+
+- `SUPABASE_DB_URL` — the complete production Session Pooler URI
+
+The workflow serializes deployments and runs `supabase db push`; never modify the remote schema manually after this workflow is enabled.
+
 ## Structure
 
 - `src/app` — dashboard, asset route, and HTTP endpoints
