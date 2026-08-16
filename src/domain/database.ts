@@ -52,7 +52,16 @@ export interface WatchlistItem {
 }
 
 export type IngestionStatus = "running" | "succeeded" | "failed";
-export type IngestionJobKind = "stock_quotes" | "wallet_transactions";
+export type IngestionJobKind = "stock_quotes" | "wallet_transactions" | "wallet_discovery";
+
+export type WalletDiscoveryStatus = "candidate" | "reviewing" | "verified" | "rejected";
+export interface WalletDiscoveryCandidateRecord {
+  id: UUID; chain: string; address: string; provider: string; status: WalletDiscoveryStatus;
+  score: number; dataQuality: number; observedTransactions: number; successfulTransactions: number;
+  activeDays: number; sourceAddresses: string[]; reasons: string[]; riskFlags: string[];
+  firstObservedAt: ISODateTime; lastObservedAt: ISODateTime; reviewedAt: ISODateTime | null;
+  createdAt: ISODateTime; updatedAt: ISODateTime;
+}
 
 export interface IngestionRun {
   id: UUID; jobKind: IngestionJobKind; provider: string; status: IngestionStatus;

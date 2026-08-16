@@ -11,8 +11,14 @@ export interface WalletTransactionBatch {
   transactions: NormalizedWalletTransaction[]; newestSignature: string | null; rateLimit: ProviderRateLimit;
 }
 
+export interface WalletDiscoveryCandidate {
+  address: string; score: number; dataQuality: number; observedTransactions: number;
+  successfulTransactions: number; activeDays: number; sourceAddresses: string[];
+  reasons: string[]; riskFlags: string[]; observedAt: string;
+}
+
 export interface BlockchainDataProvider {
   readonly chain: string; readonly name: string;
   getWalletTransactions(address: string, untilSignature?: string): Promise<WalletTransactionBatch>;
+  discoverWalletCandidates(seedAddresses: string[]): Promise<WalletDiscoveryCandidate[]>;
 }
-
