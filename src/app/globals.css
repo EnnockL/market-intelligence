@@ -12,15 +12,15 @@ footer{margin-top:30px;border-top:1px solid var(--line);padding:24px 2px 40px;co
 
 /* Gonow dark: neutral black surfaces with green reserved for accents. */
 body{background:#050706}
-body:before{opacity:.5;background-image:radial-gradient(circle,rgba(32,213,107,.14) 1px,transparent 1.3px);background-size:26px 26px;mask-image:linear-gradient(to bottom,#000,transparent 88%)}
-.topbar{width:min(calc(100% - 40px),1380px);height:66px;margin:16px auto 0;padding:0 28px;border:1px solid rgba(255,255,255,.07);border-radius:999px;background:rgba(6,8,7,.96);box-shadow:0 18px 50px rgba(0,0,0,.42);top:14px}
+body:before{opacity:.22;background-image:radial-gradient(circle,rgba(255,255,255,.08) 1px,transparent 1.3px);background-size:28px 28px;mask-image:linear-gradient(to bottom,#000,transparent 82%)}
+.topbar{width:min(calc(100% - 40px),1380px);height:66px;margin:16px auto 0;padding:0 28px;border:1px solid rgba(255,255,255,.09);border-radius:999px;background:rgba(10,11,10,.72);box-shadow:0 18px 50px rgba(0,0,0,.42),inset 0 1px rgba(255,255,255,.035);backdrop-filter:blur(24px) saturate(115%);top:14px}
 .brand-mark{background:#080b09;border:1px solid rgba(32,213,107,.55);color:var(--green);box-shadow:inset 0 0 18px rgba(32,213,107,.08)}
 nav a.active{background:transparent;color:#fff}nav a.active:after{content:"";display:block;height:2px;margin-top:5px;border-radius:2px;background:var(--green)}
-.last-scan,.data-status{background:#0c0f0d}
-.pulse-grid{background:#0d100e}
-.opportunities,.radar-panel,aside{background:#0d100e}
+.last-scan,.data-status{background:rgba(18,19,18,.62);backdrop-filter:blur(18px) saturate(110%)}
+.pulse-grid{background:linear-gradient(135deg,rgba(24,25,24,.68),rgba(12,13,12,.58));backdrop-filter:blur(20px) saturate(110%);box-shadow:0 24px 70px rgba(0,0,0,.3),inset 0 1px rgba(255,255,255,.035)}
+.opportunities,.radar-panel,aside{background:linear-gradient(145deg,rgba(22,23,22,.7),rgba(10,11,10,.62));backdrop-filter:blur(22px) saturate(110%);box-shadow:0 24px 70px rgba(0,0,0,.3),inset 0 1px rgba(255,255,255,.035)}
 .opportunity-card:hover,.compact-list>div:hover,.signal-list>div:hover{background:#171a18}
-.score-ring__inner{background:#0d100e}
-.score-panel,.detail-grid article{background:#101311}
+.score-ring__inner{background:rgba(13,14,13,.88)}
+.score-panel,.detail-grid article{background:linear-gradient(145deg,rgba(24,25,24,.72),rgba(12,13,12,.66));backdrop-filter:blur(22px) saturate(110%);box-shadow:0 24px 70px rgba(0,0,0,.3),inset 0 1px rgba(255,255,255,.035)}
 .hero h1 em{color:var(--green-soft);font-weight:650}
 @media(max-width:640px){.topbar{width:calc(100% - 24px);margin-top:10px;padding:0 18px}}
