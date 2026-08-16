@@ -3,6 +3,7 @@ import type { ProviderRateLimit } from "@/services/market-data/provider";
 
 export interface NormalizedWalletTransaction {
   walletAddress: string; signature: string; instructionIndex: number; mintAddress: string | null;
+  tokenDecimals: number | null;
   side: WalletTransactionSide; quantity: number | null; nativeValueSol: number | null;
   slot: number; occurredAt: string; receivedAt: string; rawPayload: unknown;
 }

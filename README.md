@@ -32,6 +32,8 @@ The web app never polls providers. Configure `.env.local`, then run each job ind
 npm run worker -- stocks
 npm run worker -- wallets
 npm run worker -- wallet-discovery
+npm run worker -- crypto-market
+npm run worker -- wallet-pnl
 ```
 
 The stock universe defaults to `AAPL,NVDA,AMD,TSLA,MSFT`. Stock quotes use Finnhub. Wallet ingestion uses Solana JSON-RPC and reads addresses where `wallets.is_tracked = true`. Each run persists status, record count, errors, and completion time in `ingestion_runs`; provider failures are retained in `provider_errors`.
@@ -45,6 +47,9 @@ Required server-side variables:
 - `SOLANA_RPC_URL` — standard or paid Solana JSON-RPC endpoint
 - `STOCK_SYMBOLS` — optional comma-separated stock universe
 - `SOLANA_DISCOVERY_SEEDS` — optional comma-separated public programs or addresses used to discover unverified candidates
+- `COINGECKO_API_KEY` — optional CoinGecko Pro key required for historical on-chain prices and verified PnL
+
+Crypto current price, liquidity, market cap, and 24-hour volume use the free DEX Screener API. Historical transaction-time pricing uses CoinGecko Onchain OHLCV when `COINGECKO_API_KEY` is configured. Without historical pricing, enrichments and trade cycles remain explicitly `incomplete`; the system never estimates verified profit from current prices.
 
 The dashboard falls back to labeled mock values when configuration or snapshots are missing. Provider failures display `DEGRADED`; quotes older than 15 minutes display `STALE`. Live prices do not generate opportunity scores or trading decisions.
 

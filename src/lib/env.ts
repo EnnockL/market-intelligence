@@ -5,6 +5,7 @@ const workerSchema = z.object({
   FINNHUB_API_KEY: z.string().min(1), SOLANA_RPC_URL: z.string().url(),
   STOCK_SYMBOLS: z.string().default("AAPL,NVDA,AMD,TSLA,MSFT"),
   SOLANA_DISCOVERY_SEEDS: z.string().default("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"),
+  COINGECKO_API_KEY: z.string().min(1).optional(),
 });
 
 export type WorkerEnv = z.infer<typeof workerSchema>;

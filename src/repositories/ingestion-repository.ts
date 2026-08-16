@@ -1,8 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { StockQuote } from "@/services/market-data/provider";
 import type { NormalizedWalletTransaction, WalletDiscoveryCandidate } from "@/services/blockchain/provider";
+import type { CryptoMarketPoint } from "@/services/crypto-market/provider";
+import { calculateWalletPnlMetrics, reconstructTradeCycles, POSITION_ENGINE_VERSION, type EnrichedWalletTrade, type TradeCycle } from "@/domain/wallet-pnl";
 
-export type JobKind = "stock_quotes" | "wallet_transactions" | "wallet_discovery";
+export type JobKind = "stock_quotes" | "wallet_transactions" | "wallet_discovery" | "crypto_market" | "wallet_pnl";
 
 export class IngestionRepository {
   constructor(private readonly db: SupabaseClient) {}
@@ -27,14 +29,92 @@ export class IngestionRepository {
     for (const item of items) {
       let assetId: string | null = null;
       if (item.mintAddress) {
-        const { data } = await this.db.from("crypto_tokens").select("asset_id").eq("mint_address", item.mintAddress).maybeSingle();
-        assetId = data?.asset_id ?? null;
+        assetId = await this.ensureCryptoAsset(item.mintAddress, item.tokenDecimals);
       }
       const { error } = await this.db.from("wallet_transactions").upsert({ wallet_id: walletId, asset_id: assetId, transaction_hash: item.signature, instruction_index: item.instructionIndex, side: item.side, quantity: item.quantity, block_number: item.slot, occurred_at: item.occurredAt, raw_payload: item.rawPayload }, { onConflict: "transaction_hash,instruction_index,wallet_id", ignoreDuplicates: true });
       if (error) throw error;
       inserted += 1;
     }
     return inserted;
+  }
+
+  private async ensureCryptoAsset(mintAddress: string, decimals: number | null) {
+    const { data: existing, error: lookupError } = await this.db.from("crypto_tokens").select("asset_id").eq("mint_address", mintAddress).maybeSingle();
+    if (lookupError) throw lookupError; if (existing?.asset_id) return existing.asset_id as string;
+    const symbol = `SOL-${mintAddress.slice(0, 6)}`;
+    const { data: asset, error: assetError } = await this.db.from("assets").upsert({ kind: "crypto", symbol, name: mintAddress, external_id: mintAddress, metadata: { metadata_status: "pending" } }, { onConflict: "kind,symbol" }).select("id").single();
+    if (assetError) throw assetError;
+    const { error } = await this.db.from("crypto_tokens").upsert({ asset_id: asset.id, chain: "solana", mint_address: mintAddress, decimals, first_seen_at: new Date().toISOString() }, { onConflict: "mint_address" });
+    if (error) throw error; return asset.id as string;
+  }
+
+  async cryptoTokens() {
+    const { data: tokens, error } = await this.db.from("crypto_tokens").select("asset_id,mint_address");
+    if (error) throw error; return (tokens ?? []) as Array<{ asset_id: string; mint_address: string }>;
+  }
+
+  async saveCryptoMarketPoints(points: CryptoMarketPoint[]) {
+    const tokens = await this.cryptoTokens(); const assetByMint = new Map(tokens.map((item) => [item.mint_address, item.asset_id])); let saved = 0;
+    for (const point of points) { const assetId = assetByMint.get(point.mintAddress); if (!assetId) continue;
+      const { error } = await this.db.from("crypto_market_observations").upsert({ asset_id: assetId, provider: point.provider, observed_at: point.observedAt,
+        provider_timestamp: point.providerTimestamp, price_usd: point.priceUsd, market_cap_usd: point.marketCapUsd,
+        circulating_supply: point.circulatingSupply, liquidity_usd: point.liquidityUsd, volume_24h_usd: point.volume24hUsd,
+        pool_address: point.poolAddress, confidence: point.confidence, completeness: point.completeness, raw_payload: point.rawPayload },
+      { onConflict: "asset_id,provider,observed_at", ignoreDuplicates: true });
+      if (error) throw error; saved += 1;
+    } return saved;
+  }
+
+  async walletTransactionsForEnrichment() {
+    const { data: transactions, error } = await this.db.from("wallet_transactions").select("id,wallet_id,asset_id,transaction_hash,instruction_index,side,quantity,occurred_at,raw_payload").not("asset_id", "is", null).in("side", ["buy", "sell"]).order("occurred_at", { ascending: true });
+    if (error) throw error; const tokens = await this.cryptoTokens(); const mintByAsset = new Map(tokens.map((item) => [item.asset_id, item.mint_address]));
+    return (transactions ?? []).flatMap((item) => { const mintAddress = mintByAsset.get(item.asset_id); return mintAddress ? [{ ...item, mintAddress }] : []; });
+  }
+
+  async saveTransactionEnrichment(input: { transactionId: string; provider: string; tokenPoint: CryptoMarketPoint; solPoint: CryptoMarketPoint; quantity: number; rawFeeLamports: number | null }) {
+    const tokenPrice = input.tokenPoint.priceUsd; const solPrice = input.solPoint.priceUsd;
+    const feeUsd = input.rawFeeLamports === null || solPrice === null ? null : input.rawFeeLamports / 1e9 * solPrice;
+    const pricingCompleteness = tokenPrice !== null && solPrice !== null ? 100 : tokenPrice !== null ? 50 : 0;
+    const executionCompleteness = feeUsd === null ? 0 : 100; const status = pricingCompleteness === 100 && executionCompleteness === 100 ? "complete" : pricingCompleteness > 0 ? "partial" : "incomplete";
+    const { error } = await this.db.from("wallet_transaction_enrichments").upsert({ wallet_transaction_id: input.transactionId, provider: input.provider,
+      enrichment_version: "wallet-enrichment-v1", status, token_price_usd: tokenPrice, sol_price_usd: solPrice,
+      estimated_value_usd: tokenPrice === null ? null : input.quantity * tokenPrice, fee_usd: feeUsd, priority_fee_usd: null,
+      liquidity_usd: input.tokenPoint.liquidityUsd, market_cap_usd: input.tokenPoint.marketCapUsd,
+      price_timestamp: input.tokenPoint.providerTimestamp, known_at: new Date().toISOString(), pricing_completeness: pricingCompleteness,
+      execution_completeness: executionCompleteness, raw_payload: { token: input.tokenPoint.rawPayload, sol: input.solPoint.rawPayload } },
+    { onConflict: "wallet_transaction_id,provider,enrichment_version", ignoreDuplicates: true });
+    if (error) throw error; return { status };
+  }
+
+  async rebuildWalletPnl(provider: string) {
+    const transactions = await this.walletTransactionsForEnrichment();
+    const { data: enrichments, error } = await this.db.from("wallet_transaction_enrichments").select("wallet_transaction_id,token_price_usd,fee_usd,pricing_completeness,execution_completeness").eq("provider", provider).eq("enrichment_version", "wallet-enrichment-v1");
+    if (error) throw error; const enrichmentByTx = new Map((enrichments ?? []).map((item) => [item.wallet_transaction_id, item]));
+    const groups = new Map<string, typeof transactions>();
+    for (const tx of transactions) { const key = `${tx.wallet_id}:${tx.asset_id}`; const values = groups.get(key) ?? []; values.push(tx); groups.set(key, values); }
+    const cyclesByWallet = new Map<string, TradeCycle[]>(); let saved = 0;
+    for (const [key, values] of groups) { const [walletId, assetId] = key.split(":");
+      const events: EnrichedWalletTrade[] = values.map((tx) => { const enrichment = enrichmentByTx.get(tx.id); return { id: tx.id, signature: tx.transaction_hash,
+        instructionIndex: tx.instruction_index, token: tx.mintAddress, side: tx.side as "buy" | "sell", quantity: Number(tx.quantity), occurredAt: tx.occurred_at,
+        tokenPriceUsd: enrichment?.token_price_usd === null || enrichment?.token_price_usd === undefined ? null : Number(enrichment.token_price_usd),
+        feeUsd: enrichment?.fee_usd === null || enrichment?.fee_usd === undefined ? null : Number(enrichment.fee_usd),
+        pricingComplete: enrichment?.pricing_completeness === 100, executionComplete: enrichment?.execution_completeness === 100 }; });
+      const cycles = reconstructTradeCycles(events); await this.db.from("wallet_trade_cycles").delete().eq("wallet_id", walletId).eq("asset_id", assetId).eq("engine_version", POSITION_ENGINE_VERSION);
+      if (cycles.length) { const { error: cycleError } = await this.db.from("wallet_trade_cycles").insert(cycles.map((cycle) => ({ wallet_id: walletId, asset_id: assetId,
+        cycle_number: cycle.cycleNumber, engine_version: cycle.engineVersion, status: cycle.status, quantity: cycle.quantity, invested_usd: cycle.investedUsd,
+        cost_basis_usd: cycle.costBasisUsd, average_entry_usd: cycle.averageEntryUsd, proceeds_usd: cycle.proceedsUsd, realized_pnl_usd: cycle.realizedPnlUsd,
+        unrealized_pnl_usd: cycle.unrealizedPnlUsd, return_percent: cycle.returnPercent, first_entry_at: cycle.firstEntryAt, final_exit_at: cycle.finalExitAt,
+        holding_seconds: cycle.holdingSeconds, pricing_completeness: cycle.pricingCompleteness, transaction_completeness: cycle.transactionCompleteness,
+        execution_completeness: cycle.executionCompleteness, data_quality: cycle.dataQuality, transaction_ids: cycle.transactionIds }))); if (cycleError) throw cycleError; }
+      saved += cycles.length; const walletCycles = cyclesByWallet.get(walletId) ?? []; walletCycles.push(...cycles); cyclesByWallet.set(walletId, walletCycles);
+    }
+    const now = new Date().toISOString(); for (const [walletId, cycles] of cyclesByWallet) { const metrics = calculateWalletPnlMetrics(cycles); const quality = cycles.length ? Math.round(cycles.reduce((sum, cycle) => sum + cycle.dataQuality, 0) / cycles.length) : 0;
+      const { error: metricError } = await this.db.from("wallet_metric_snapshots").insert({ wallet_id: walletId, engine_version: POSITION_ENGINE_VERSION,
+        scoring_version: "wallet-metrics-v2-preparation", calculated_at: now, information_available_through: now, closed_trades: metrics.closedTrades,
+        verified_trades: metrics.verifiedTrades, wins: metrics.wins, losses: metrics.losses, win_rate: metrics.winRate, median_return: metrics.medianReturn,
+        mean_return: metrics.meanReturn, realized_pnl_usd: metrics.realizedPnlUsd, best_trade_percent: metrics.bestTradePercent,
+        worst_trade_percent: metrics.worstTradePercent, median_holding_seconds: metrics.medianHoldingSeconds, data_quality: quality, metrics }); if (metricError) throw metricError; }
+    return saved;
   }
 
   async updateWalletCursor(walletId: string, signature: string) {

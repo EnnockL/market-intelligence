@@ -52,7 +52,7 @@ export interface WatchlistItem {
 }
 
 export type IngestionStatus = "running" | "succeeded" | "failed";
-export type IngestionJobKind = "stock_quotes" | "wallet_transactions" | "wallet_discovery";
+export type IngestionJobKind = "stock_quotes" | "wallet_transactions" | "wallet_discovery" | "crypto_market" | "wallet_pnl";
 
 export type WalletDiscoveryStatus = "candidate" | "reviewing" | "verified" | "rejected";
 export interface WalletDiscoveryCandidateRecord {
@@ -72,4 +72,34 @@ export interface IngestionRun {
 export interface ProviderErrorRecord {
   id: UUID; ingestionRunId: UUID | null; provider: string; errorCode: string;
   message: string; retryable: boolean; httpStatus: number | null; context: Json; occurredAt: ISODateTime;
+}
+
+export type DataCompleteness = "complete" | "partial" | "unavailable";
+export interface CryptoMarketObservation {
+  id: UUID; assetId: UUID; provider: string; observedAt: ISODateTime; providerTimestamp: ISODateTime | null;
+  priceUsd: string | null; marketCapUsd: string | null; circulatingSupply: string | null;
+  liquidityUsd: string | null; volume24hUsd: string | null; poolAddress: string | null;
+  confidence: number; completeness: DataCompleteness; rawPayload: Json; ingestedAt: ISODateTime;
+}
+export interface WalletTransactionEnrichment {
+  id: UUID; walletTransactionId: UUID; provider: string; enrichmentVersion: string;
+  status: "complete" | "partial" | "incomplete"; tokenPriceUsd: string | null; solPriceUsd: string | null;
+  estimatedValueUsd: string | null; feeUsd: string | null; priorityFeeUsd: string | null;
+  liquidityUsd: string | null; marketCapUsd: string | null; priceTimestamp: ISODateTime | null;
+  knownAt: ISODateTime; pricingCompleteness: number; executionCompleteness: number; rawPayload: Json;
+}
+export interface WalletTradeCycleRecord {
+  id: UUID; walletId: UUID; assetId: UUID; cycleNumber: number; engineVersion: string;
+  status: "open" | "closed" | "incomplete"; quantity: string; investedUsd: string | null;
+  costBasisUsd: string | null; averageEntryUsd: string | null; proceedsUsd: string | null;
+  realizedPnlUsd: string | null; unrealizedPnlUsd: string | null; returnPercent: string | null;
+  firstEntryAt: ISODateTime; finalExitAt: ISODateTime | null; holdingSeconds: number | null;
+  pricingCompleteness: number; transactionCompleteness: number; executionCompleteness: number; dataQuality: number;
+  walletScoreAtEntry: number | null; scoringVersionAtEntry: string | null; tokenRiskScoreAtEntry: number | null; entryContext: Json;
+}
+export interface WalletMetricSnapshot {
+  id: UUID; walletId: UUID; engineVersion: string; scoringVersion: string; calculatedAt: ISODateTime;
+  informationAvailableThrough: ISODateTime; closedTrades: number; verifiedTrades: number; wins: number; losses: number;
+  winRate: string | null; medianReturn: string | null; meanReturn: string | null; realizedPnlUsd: string | null;
+  bestTradePercent: string | null; worstTradePercent: string | null; medianHoldingSeconds: number | null; dataQuality: number; metrics: Json;
 }
