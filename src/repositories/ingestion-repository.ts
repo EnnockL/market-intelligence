@@ -1,8 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { StockQuote } from "@/services/market-data/provider";
-import type { NormalizedWalletTransaction } from "@/services/blockchain/provider";
+import type { NormalizedWalletTransaction, WalletDiscoveryCandidate } from "@/services/blockchain/provider";
 
-export type JobKind = "stock_quotes" | "wallet_transactions";
+export type JobKind = "stock_quotes" | "wallet_transactions" | "wallet_discovery";
 
 export class IngestionRepository {
   constructor(private readonly db: SupabaseClient) {}
@@ -42,6 +42,19 @@ export class IngestionRepository {
     if (error) throw error;
   }
 
+  async saveWalletDiscoveryCandidates(items: WalletDiscoveryCandidate[], provider: string) {
+    if (items.length === 0) return 0;
+    const { error } = await this.db.from("wallet_discovery_candidates").upsert(items.map((item) => ({
+      chain: "solana", address: item.address, provider, status: "candidate", score: item.score,
+      data_quality: item.dataQuality, observed_transactions: item.observedTransactions,
+      successful_transactions: item.successfulTransactions, active_days: item.activeDays,
+      source_addresses: item.sourceAddresses, reasons: item.reasons, risk_flags: item.riskFlags,
+      last_observed_at: item.observedAt, updated_at: new Date().toISOString(),
+    })), { onConflict: "chain,address", ignoreDuplicates: false });
+    if (error) throw error;
+    return items.length;
+  }
+
   async startRun(kind: JobKind, provider: string) {
     const { data, error } = await this.db.from("ingestion_runs").insert({ job_kind: kind, provider, status: "running" }).select("id").single();
     if (error) throw error; return data.id as string;
@@ -62,4 +75,3 @@ export class IngestionRepository {
     await this.db.from("provider_errors").insert({ ingestion_run_id: runId, provider, error_code: "code" in value ? String(value.code) : "unknown", message: value.message, retryable: "retryable" in value ? Boolean(value.retryable) : false, http_status: "status" in value ? value.status : null, context });
   }
 }
-

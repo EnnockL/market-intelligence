@@ -1,6 +1,7 @@
 import { ProviderError } from "@/services/market-data/provider";
 import { normalizeSolanaTransaction, deduplicateTransactions } from "./normalize-solana-transaction";
-import type { BlockchainDataProvider, WalletTransactionBatch } from "./provider";
+import { extractSignerCandidates, scoreDiscoveryCandidate } from "./wallet-discovery";
+import type { BlockchainDataProvider, WalletDiscoveryCandidate, WalletTransactionBatch } from "./provider";
 
 type Fetch = typeof fetch;
 
@@ -16,6 +17,29 @@ export class SolanaRpcProvider implements BlockchainDataProvider {
       if (transaction.value) transactions.push(...normalizeSolanaTransaction(transaction.value as Parameters<typeof normalizeSolanaTransaction>[0], address));
     }
     return { transactions: deduplicateTransactions(transactions), newestSignature: signatures.value[0]?.signature ?? null, rateLimit: signatures.rateLimit };
+  }
+
+  async discoverWalletCandidates(seedAddresses: string[]): Promise<WalletDiscoveryCandidate[]> {
+    const excluded = new Set(seedAddresses);
+    const sources = new Map<string, Set<string>>();
+    for (const seed of seedAddresses) {
+      const signatures = await this.rpc<Array<{ signature: string }>>("getSignaturesForAddress", [seed, { limit: 10 }]);
+      for (const item of signatures.value) {
+        const transaction = await this.rpc<unknown>("getTransaction", [item.signature, { encoding: "jsonParsed", maxSupportedTransactionVersion: 0 }]);
+        if (!transaction.value) continue;
+        for (const address of extractSignerCandidates(transaction.value as Parameters<typeof extractSignerCandidates>[0], excluded)) {
+          const values = sources.get(address) ?? new Set<string>(); values.add(seed); sources.set(address, values);
+        }
+      }
+    }
+    const candidates: WalletDiscoveryCandidate[] = [];
+    for (const [address, sourceSet] of [...sources.entries()].slice(0, 5)) {
+      const history = await this.rpc<Array<{ blockTime: number | null; err: unknown }>>("getSignaturesForAddress", [address, { limit: 20 }]);
+      const times = history.value.flatMap((item) => item.blockTime === null ? [] : [item.blockTime]);
+      const activeDays = times.length > 1 ? (Math.max(...times) - Math.min(...times)) / 86_400 : 0;
+      candidates.push(scoreDiscoveryCandidate({ address, observedTransactions: history.value.length, successfulTransactions: history.value.filter((item) => item.err === null).length, activeDays, sourceAddresses: [...sourceSet] }));
+    }
+    return candidates.sort((a, b) => b.score - a.score);
   }
 
   private async rpc<T>(method: string, params: unknown[]): Promise<{ value: T; rateLimit: { remaining: number | null; resetAt: string | null } }> {
