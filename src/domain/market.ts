@@ -26,3 +26,19 @@ export interface MarketPulse {
   tone: "positive" | "negative" | "neutral";
 }
 
+export interface SmartMoneyCluster {
+  token: string; walletCount: number; averageWalletScore: number;
+  windowMinutes: number; signalScore: number; marketCapUsd: number; risk: RiskLevel;
+}
+
+export interface StockRadarItem {
+  symbol: string; signal: SignalDirection; score: number; catalyst: string; change: number;
+}
+
+export interface RecentSignal {
+  id: string; symbol: string; label: string; scoreImpact: number; occurredAt: string;
+}
+
+export interface WatchlistAsset {
+  symbol: string; name: string; kind: AssetKind; price: number; change: number; score: number;
+}

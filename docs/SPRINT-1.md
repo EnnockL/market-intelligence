@@ -13,6 +13,8 @@ Deliver a trustworthy data layer that tracks 100 Solana wallets and 100 stocks, 
 - Unified asset event timeline
 - Versioned, deterministic wallet scoring with component audit trail
 - Versioned signal and signal-component storage
+- Watchlists and typed provider boundaries
+- Schema contracts for Simulation Engine, Paper Portfolio, and Historical Replay
 - Supabase RLS baseline and health endpoint
 
 ## Acceptance criteria
@@ -33,7 +35,6 @@ Deliver a trustworthy data layer that tracks 100 Solana wallets and 100 stocks, 
 4. Add timeline search and tracked-universe administration.
 5. Run a 24-hour ingestion soak test before beginning Smart Money clustering.
 
-## Explicitly deferred
+## Foundation only
 
-AI analysis, wallet convergence, news sentiment, paper trading, alerts, historical analogs, and any live order execution.
-
+Simulation, paper portfolio, and replay are core architecture from this sprint, but their calculation workers and interactive UI are implemented after reliable ingestion. AI analysis, wallet convergence, news sentiment, alerts, historical analogs, and all live order execution remain deferred.

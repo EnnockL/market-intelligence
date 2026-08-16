@@ -28,9 +28,13 @@ Apply `supabase/migrations/0001_initial_schema.sql` to a new Supabase project. B
 
 - `src/app` — dashboard, asset route, and HTTP endpoints
 - `src/domain` — provider-neutral types and deterministic scoring
+- `src/services` — replaceable market-data, blockchain, and AI provider contracts
 - `src/data` — typed demo fixtures, replaceable by repositories
 - `supabase/migrations` — versioned PostgreSQL schema
 - `docs/SPRINT-1.md` — scope and acceptance criteria
+- `docs/MASTER-PLAN.md` — simulation, replay, paper portfolio, and delivery principles
 - `tests` — deterministic domain tests
 
 This is research software for paper evaluation, not financial advice or an execution system.
+
+Simulation, historical replay, and paper portfolios are first-class schema domains. This foundation stores their assumptions and audit trail, but does not yet execute simulations or place any real trades.
