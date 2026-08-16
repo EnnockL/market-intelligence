@@ -51,3 +51,16 @@ export interface WatchlistItem {
   watchlistId: UUID; assetId: UUID; note: string | null; createdAt: ISODateTime;
 }
 
+export type IngestionStatus = "running" | "succeeded" | "failed";
+export type IngestionJobKind = "stock_quotes" | "wallet_transactions";
+
+export interface IngestionRun {
+  id: UUID; jobKind: IngestionJobKind; provider: string; status: IngestionStatus;
+  recordsProcessed: number; errorCode: string | null; errorMessage: string | null;
+  startedAt: ISODateTime; finishedAt: ISODateTime | null;
+}
+
+export interface ProviderErrorRecord {
+  id: UUID; ingestionRunId: UUID | null; provider: string; errorCode: string;
+  message: string; retryable: boolean; httpStatus: number | null; context: Json; occurredAt: ISODateTime;
+}

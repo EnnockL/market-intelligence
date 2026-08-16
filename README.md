@@ -22,7 +22,29 @@ npm run build
 
 ## Database
 
-Apply `supabase/migrations/0001_initial_schema.sql` to a new Supabase project. Browser clients receive only the anon key; ingestion workers use the service-role key server-side. RLS exposes active market data but keeps wallet intelligence private by default.
+Apply all files in `supabase/migrations` in numeric order. Browser clients receive only the anon key; ingestion workers use the service-role key server-side. RLS exposes active market data but keeps wallet intelligence private by default.
+
+## Ingestion workers
+
+The web app never polls providers. Configure `.env.local`, then run each job independently from a scheduler or terminal:
+
+```bash
+npm run worker -- stocks
+npm run worker -- wallets
+```
+
+The stock universe defaults to `AAPL,NVDA,AMD,TSLA,MSFT`. Stock quotes use Finnhub. Wallet ingestion uses Solana JSON-RPC and reads addresses where `wallets.is_tracked = true`. Each run persists status, record count, errors, and completion time in `ingestion_runs`; provider failures are retained in `provider_errors`.
+
+Required server-side variables:
+
+- `NEXT_PUBLIC_SUPABASE_URL` — Supabase project URL
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` — read-only browser/server-render key
+- `SUPABASE_SERVICE_ROLE_KEY` — worker-only database key; never expose it to the client
+- `FINNHUB_API_KEY` — Finnhub API token for stock quotes
+- `SOLANA_RPC_URL` — standard or paid Solana JSON-RPC endpoint
+- `STOCK_SYMBOLS` — optional comma-separated stock universe
+
+The dashboard falls back to labeled mock values when configuration or snapshots are missing. Provider failures display `DEGRADED`; quotes older than 15 minutes display `STALE`. Live prices do not generate opportunity scores or trading decisions.
 
 ## Structure
 

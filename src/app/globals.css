@@ -20,6 +20,7 @@ h1,h2,p { margin-top:0; }
 .hero h1 { font-size:58px; line-height:1; margin:12px 0 14px; letter-spacing:-.055em; }
 .hero h1 em { font-weight:300; color:var(--green); font-style:normal; }
 .hero p { color:var(--muted); max-width:590px; }
+.data-status { display:flex; width:max-content; align-items:center; gap:8px; padding:7px 10px; border:1px solid var(--line); background:#0d161f; color:var(--muted); font:9px monospace; }.data-status i { width:7px; height:7px; border-radius:50%; background:var(--muted); }.data-status strong { letter-spacing:.1em; }.data-status--live { border-color:#245d47; }.data-status--live i { background:var(--green); box-shadow:0 0 8px var(--green); }.data-status--stale i { background:var(--amber); }.data-status--degraded i { background:var(--red); }
 .last-scan { border-left:1px solid var(--line); padding-left:28px; display:grid; gap:5px; text-align:right; }
 .last-scan span,.last-scan small { color:var(--muted); font:10px monospace; letter-spacing:.12em; }
 .last-scan strong { font:24px monospace; }

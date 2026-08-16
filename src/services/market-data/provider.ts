@@ -1,18 +1,28 @@
-import type { Asset, ISODateTime, WalletTransaction } from "@/domain/database";
+export interface ProviderRateLimit {
+  remaining: number | null;
+  resetAt: string | null;
+}
 
-export interface PricePoint {
-  assetId: string; capturedAt: ISODateTime; close: string; volume: string | null;
-  marketCapUsd: string | null; providerEventId: string;
+export class ProviderError extends Error {
+  constructor(
+    message: string,
+    public readonly provider: string,
+    public readonly code: "unauthorized" | "rate_limited" | "invalid_response" | "unavailable",
+    public readonly retryable: boolean,
+    public readonly status: number | null = null,
+    public readonly retryAfterMs: number | null = null,
+  ) { super(message); this.name = "ProviderError"; }
+}
+
+export interface StockQuote {
+  symbol: string; price: number; open: number | null; high: number | null; low: number | null;
+  previousClose: number | null; change: number | null; changePercent: number | null;
+  volume: number | null; observedAt: string; receivedAt: string; provider: string;
+  providerEventId: string; rateLimit: ProviderRateLimit;
 }
 
 export interface MarketDataProvider {
   readonly name: string;
-  getAssets(symbols: string[]): Promise<Asset[]>;
-  getPrices(assetIds: string[], since: ISODateTime): Promise<PricePoint[]>;
-}
-
-export interface BlockchainDataProvider {
-  readonly chain: string;
-  getWalletTransactions(addresses: string[], since: ISODateTime): Promise<WalletTransaction[]>;
+  getQuotes(symbols: string[]): Promise<StockQuote[]>;
 }
 
