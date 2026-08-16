@@ -48,10 +48,9 @@ The dashboard falls back to labeled mock values when configuration or snapshots 
 
 ## Database deployment
 
-Migrations are deployed from `main` by `.github/workflows/deploy-database.yml`. Configure the GitHub `production` environment with these repository secrets:
+Migrations are deployed from `main` by `.github/workflows/deploy-database.yml`. Configure the GitHub `production` environment with this repository secret:
 
-- `SUPABASE_ACCESS_TOKEN` — a Supabase personal access token
-- `SUPABASE_DB_PASSWORD` — the project database password
+- `SUPABASE_DB_URL` — the complete production Session Pooler URI
 
 The workflow serializes deployments and runs `supabase db push`; never modify the remote schema manually after this workflow is enabled.
 
