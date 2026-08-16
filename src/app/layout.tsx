@@ -8,17 +8,12 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return (
-    <html lang="en">
-      <body>
-        <header className="topbar">
-          <Link href="/" className="brand"><span className="brand-mark">M</span><span>MARKET<span className="brand-accent">//</span>INTEL</span></Link>
-          <nav><Link className="active" href="/">Radar</Link><a href="#watchlist">Watchlist</a><a href="#signals">Signals</a><a href="#research">Research</a></nav>
-          <div className="system-status"><i /> Data stream live <kbd>⌘ K</kbd></div>
-        </header>
-        {children}
-      </body>
-    </html>
-  );
+  return <html lang="en"><body>
+    <header className="topbar">
+      <Link href="/" className="brand"><span className="brand-mark">M</span><span className="brand-copy"><strong>Market Intelligence</strong><small>Investment platform</small></span></Link>
+      <nav><Link className="active" href="/">Radar</Link><a href="#watchlist">Watchlist</a><a href="#signals">Signals</a><a href="#research">Research</a></nav>
+      <div className="topbar-actions"><div className="system-status"><i /> Systems operational</div><button className="command-button" aria-label="Open command palette">⌘ K</button><button className="profile-button" aria-label="Open profile">EN</button></div>
+    </header>
+    {children}
+  </body></html>;
 }
-
