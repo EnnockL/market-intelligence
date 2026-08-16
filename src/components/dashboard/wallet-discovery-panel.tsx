@@ -1,5 +1,6 @@
 import type { DashboardWalletDiscoveryData } from "@/data/wallet-discovery-data";
 import { DataStatus } from "./data-status";
+import Link from "next/link";
 
 export function WalletDiscoveryPanel({ data }: { data: DashboardWalletDiscoveryData }) {
   return <section className="radar-panel discovery-panel">
@@ -8,7 +9,7 @@ export function WalletDiscoveryPanel({ data }: { data: DashboardWalletDiscoveryD
       const successRate = item.observedTransactions ? Math.round(item.successfulTransactions / item.observedTransactions * 100) : 0;
       return <article key={item.address}>
         <span className="discovery-rank">#{index + 1}</span>
-        <div className="discovery-wallet"><strong>{shortAddress(item.address)}</strong><span title={item.address}>{item.address}</span></div>
+        <Link className="discovery-wallet" href={`/wallets/${item.address}`}><strong>{shortAddress(item.address)}</strong><span title={item.address}>{item.address}</span></Link>
         <Metric value={`${item.score}/75`} label="discovery" />
         <Metric value={`${item.dataQuality}%`} label="data quality" />
         <Metric value={`${successRate}%`} label="successful" />
