@@ -17,7 +17,7 @@ import { GeckoTerminalProvider } from "@/services/crypto-market/geckoterminal-pr
 
 async function main() {
   const job = process.argv[2];
-  if (!["stocks", "wallets", "wallet-discovery", "crypto-market", "wallet-pnl"].includes(job)) throw new Error("Usage: npm run worker -- stocks|wallets|wallet-discovery|crypto-market|wallet-pnl");
+  if (!["stocks", "wallets", "wallet-discovery", "crypto-market", "wallet-pnl", "wallet-evidence"].includes(job)) throw new Error("Usage: npm run worker -- stocks|wallets|wallet-discovery|crypto-market|wallet-pnl|wallet-evidence");
   const env = getWorkerEnv();
   const repository = new IngestionRepository(createServiceClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY));
   const result = job === "stocks"
