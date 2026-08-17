@@ -15,7 +15,7 @@ alter table public.event_outbox add column locked_by text;
 alter table public.event_outbox add column processed_at timestamptz;
 alter table public.event_outbox rename column publish_attempts to attempts;
 alter table public.event_outbox drop column published_at;
-update public.event_outbox set payload_hash=encode(digest(payload::text,'sha256')) where payload_hash is null;
+update public.event_outbox set payload_hash=encode(digest(payload::text,'sha256'),'hex') where payload_hash is null;
 alter table public.event_outbox alter column payload_hash set not null;
 alter table public.event_outbox add constraint event_outbox_payload_hash_format check(payload_hash ~ '^[0-9a-f]{64}$');
 alter table public.event_outbox add constraint event_outbox_lock_consistency check(
