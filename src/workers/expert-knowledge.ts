@@ -1,0 +1,2 @@
+import type{SupabaseClient}from"@supabase/supabase-js";import type{IngestionRepository}from"@/repositories/ingestion-repository";import{ExpertKnowledgeService}from"@/services/expert-knowledge/service";
+export async function runExpertKnowledge(db:SupabaseClient,repository:IngestionRepository){const runId=await repository.startRun("expert_knowledge","expert-knowledge-v1");try{const result=await new ExpertKnowledgeService(db).seed();await repository.finishRun(runId,result.rules);return{runId,...result}}catch(error){await repository.failRun(runId,error);throw error}}
