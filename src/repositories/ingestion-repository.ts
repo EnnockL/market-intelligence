@@ -5,7 +5,7 @@ import type { CryptoMarketPoint } from "@/services/crypto-market/provider";
 import { calculateWalletPnlMetrics, reconstructTradeCycles, POSITION_ENGINE_VERSION, type EnrichedWalletTrade, type TradeCycle } from "@/domain/wallet-pnl";
 import { calculateWalletScoreV2, calculateWalletScoreV3 } from "@/domain/wallet-scoring";
 import { calculateRugExposure, selectRiskAt, type PointInTimeRisk, type TokenRiskClassification } from "@/domain/token-risk";
-import { classifyExecutionCapacity, selectPointInTimeLiquidity, type LiquiditySnapshot } from "@/domain/historical-liquidity";
+import { classifyExecutionCapacity, liquiditySnapshotFromObservation, selectPointInTimeLiquidity, type LiquiditySnapshot } from "@/domain/historical-liquidity";
 import { buildRealizedPnlCurve, calculateDrawdown, PERFORMANCE_CURVE_VERSION } from "@/domain/wallet-performance";
 import { buildVerificationProgress, calculateDataQualityV3, evaluateWalletVerification, WALLET_VERIFICATION_POLICY } from "@/domain/wallet-verification";
 import type { TokenRiskAssessment } from "@/services/token-risk/provider";
@@ -85,7 +85,11 @@ export class IngestionRepository {
         circulating_supply: point.circulatingSupply, liquidity_usd: point.liquidityUsd, volume_24h_usd: point.volume24hUsd,
         pool_address: point.poolAddress, confidence: point.confidence, completeness: point.completeness, raw_payload: point.rawPayload },
       { onConflict: "asset_id,provider,observed_at", ignoreDuplicates: true });
-      if (error) throw error; saved += 1;
+      if (error) throw error;
+      const liquidity = liquiditySnapshotFromObservation({ assetId, poolAddress: point.poolAddress, liquidityUsd: point.liquidityUsd,
+        observedAt: point.observedAt, provider: point.provider, confidence: point.confidence });
+      if (liquidity) await this.saveLiquiditySnapshots([liquidity]);
+      saved += 1;
     } return saved;
   }
 
