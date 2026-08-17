@@ -7,9 +7,14 @@ export async function runWalletIngestion(provider: BlockchainDataProvider, repos
   try {
     const wallets = await repository.trackedWallets();
     for (const wallet of wallets) {
-      const batch = await provider.getWalletTransactions(wallet.address, wallet.metadata?.last_signature);
-      processed += await repository.saveWalletTransactions(wallet.id, batch.transactions);
-      if (batch.newestSignature) await repository.updateWalletCursor(wallet.id, batch.newestSignature);
+      const incremental = await provider.getWalletTransactions(wallet.address, { untilSignature: wallet.metadata?.last_signature, limit: 10, maxRequests: 11 });
+      processed += await repository.saveWalletTransactions(wallet.id, incremental.transactions);
+      if (incremental.newestSignature) await repository.updateWalletCursor(wallet.id, incremental.newestSignature);
+      if (!wallet.metadata?.backfill_complete) {
+        const historical = await provider.getWalletTransactions(wallet.address, { beforeSignature: wallet.metadata?.backfill_before, limit: 25, maxRequests: 26 });
+        processed += await repository.saveWalletTransactions(wallet.id, historical.transactions);
+        await repository.updateWalletBackfillCursor(wallet.id, historical.oldestSignature, !historical.hasMore || !historical.oldestSignature);
+      }
     }
     await repository.finishRun(runId, processed);
     return { runId, recordsProcessed: processed };
@@ -19,4 +24,3 @@ export async function runWalletIngestion(provider: BlockchainDataProvider, repos
     throw error;
   }
 }
-

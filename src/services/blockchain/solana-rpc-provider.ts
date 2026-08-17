@@ -1,7 +1,7 @@
 import { ProviderError } from "@/services/market-data/provider";
 import { normalizeSolanaTransaction, deduplicateTransactions } from "./normalize-solana-transaction";
 import { extractSignerCandidates, scoreDiscoveryCandidate } from "./wallet-discovery";
-import type { BlockchainDataProvider, WalletDiscoveryCandidate, WalletTransactionBatch } from "./provider";
+import type { BlockchainDataProvider, WalletDiscoveryCandidate, WalletHistoryRequest, WalletTransactionBatch } from "./provider";
 
 type Fetch = typeof fetch;
 
@@ -9,14 +9,17 @@ export class SolanaRpcProvider implements BlockchainDataProvider {
   readonly chain = "solana"; readonly name = "solana-rpc";
   constructor(private readonly rpcUrl: string, private readonly fetcher: Fetch = fetch) {}
 
-  async getWalletTransactions(address: string, untilSignature?: string): Promise<WalletTransactionBatch> {
-    const signatures = await this.rpc<Array<{ signature: string }>>("getSignaturesForAddress", [address, { limit: 10, ...(untilSignature ? { until: untilSignature } : {}) }]);
+  async getWalletTransactions(address: string, request: WalletHistoryRequest = {}): Promise<WalletTransactionBatch> {
+    const limit = Math.max(1, Math.min(request.limit ?? 25, 100)); const maxRequests = Math.max(2, Math.min(request.maxRequests ?? 30, 101));
+    const signatures = await this.rpc<Array<{ signature: string }>>("getSignaturesForAddress", [address, { limit: Math.min(limit, maxRequests - 1), ...(request.untilSignature ? { until: request.untilSignature } : {}), ...(request.beforeSignature ? { before: request.beforeSignature } : {}) }]);
     const transactions = [];
-    for (const item of signatures.value) {
+    for (const item of signatures.value.slice(0, maxRequests - 1)) {
       const transaction = await this.rpc<unknown>("getTransaction", [item.signature, { encoding: "jsonParsed", maxSupportedTransactionVersion: 0 }]);
       if (transaction.value) transactions.push(...normalizeSolanaTransaction(transaction.value as Parameters<typeof normalizeSolanaTransaction>[0], address));
     }
-    return { transactions: deduplicateTransactions(transactions), newestSignature: signatures.value[0]?.signature ?? null, rateLimit: signatures.rateLimit };
+    return { transactions: deduplicateTransactions(transactions), newestSignature: signatures.value[0]?.signature ?? null,
+      oldestSignature: signatures.value.at(-1)?.signature ?? null, hasMore: signatures.value.length === Math.min(limit, maxRequests - 1),
+      requestsUsed: 1 + Math.min(signatures.value.length, maxRequests - 1), rateLimit: signatures.rateLimit };
   }
 
   async discoverWalletCandidates(seedAddresses: string[]): Promise<WalletDiscoveryCandidate[]> {

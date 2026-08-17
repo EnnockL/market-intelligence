@@ -1,0 +1,21 @@
+import { z } from "zod";
+import type { LiquiditySnapshot } from "@/domain/historical-liquidity";
+import { ProviderError } from "@/services/market-data/provider";
+import type { HistoricalLiquidityProvider, HistoricalLiquidityRequest } from "./provider";
+const itemSchema = z.object({ unix_time: z.number(), liquidity_usd: z.number().optional(), total_liquidity_usd: z.number().optional(), exit_liquidity_usd: z.number().optional(), address: z.string().optional(), pair_address: z.string().optional() }).passthrough();
+const responseSchema = z.object({ success: z.boolean().optional(), data: z.union([z.array(itemSchema), z.object({ items: z.array(itemSchema) }).passthrough()]) });
+type Fetch = typeof fetch;
+export class BirdeyeHistoricalLiquidityProvider implements HistoricalLiquidityProvider {
+  readonly name = "birdeye-liquidity-v3"; private readonly cache = new Map<string, LiquiditySnapshot[]>();
+  constructor(private readonly apiKey: string, private readonly fetcher: Fetch = fetch, private readonly baseUrl = "https://public-api.birdeye.so") {}
+  async getHistoricalLiquidity(request: HistoricalLiquidityRequest) {
+    const key = `${request.mintAddress}:${request.from}:${request.to}:${request.informationCutoffAt}`; const cached = this.cache.get(key); if (cached) return cached;
+    const fromMs = new Date(request.from).getTime(); const toMs = new Date(request.to).getTime(); let cursor = Math.floor(toMs / 1000); const items: z.infer<typeof itemSchema>[] = [];
+    for (let page = 0; page < 5 && cursor * 1000 >= fromMs; page++) { const url = new URL(`${this.baseUrl}/defi/v3/liquidity/history/token`); url.searchParams.set("address", request.mintAddress); url.searchParams.set("type", "1m"); url.searchParams.set("time", String(cursor)); url.searchParams.set("direction", "back"); url.searchParams.set("count", "100"); const response = await this.request(url); const parsed = responseSchema.safeParse(await response.json()); if (!parsed.success) throw new ProviderError("Birdeye returned invalid liquidity history", this.name, "invalid_response", false); const pageItems = Array.isArray(parsed.data.data) ? parsed.data.data : parsed.data.data.items; items.push(...pageItems); if (pageItems.length < 100) break; cursor = Math.min(...pageItems.map((item) => item.unix_time)) - 1; }
+    const snapshots = items.filter((item) => item.unix_time * 1000 >= fromMs && item.unix_time * 1000 <= toMs).flatMap((item, index) => { const liquidity = item.total_liquidity_usd ?? item.liquidity_usd ?? item.exit_liquidity_usd; if (liquidity === undefined || !Number.isFinite(liquidity)) return []; return [{ id: `${request.assetId}:${item.unix_time}:${index}`, assetId: request.assetId, poolAddress: item.pair_address ?? item.address ?? null, liquidityUsd: liquidity, effectiveAt: new Date(item.unix_time * 1000).toISOString(), informationAvailableAt: new Date((item.unix_time + 60) * 1000).toISOString(), provider: this.name, quality: item.total_liquidity_usd !== undefined ? 90 : 75 } satisfies LiquiditySnapshot]; });
+    this.cache.set(key, snapshots); return snapshots;
+  }
+  private async request(url: URL) { for (let attempt = 0; attempt < 4; attempt++) { const response = await this.fetcher(url, { headers: { accept: "application/json", "x-chain": "solana", "X-API-KEY": this.apiKey } }); if (response.status === 429 && attempt < 3) { await delay(retryMs(response.headers.get("retry-after"), attempt)); continue; } if (response.status === 429) throw new ProviderError("Birdeye liquidity rate limit reached", this.name, "rate_limited", true, 429); if (response.status === 401 || response.status === 403) throw new ProviderError("Birdeye liquidity authorization failed", this.name, "unauthorized", false, response.status); if (!response.ok) throw new ProviderError(`Birdeye liquidity HTTP ${response.status}`, this.name, "unavailable", response.status >= 500, response.status); return response; } throw new ProviderError("Birdeye liquidity retry limit reached", this.name, "rate_limited", true, 429); }
+}
+function retryMs(value: string | null, attempt: number) { const seconds = Number(value); return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : Math.min(1000 * 2 ** attempt, 8000); }
+function delay(ms: number) { return new Promise((resolve) => setTimeout(resolve, ms)); }

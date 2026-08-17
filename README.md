@@ -34,6 +34,7 @@ npm run worker -- wallets
 npm run worker -- wallet-discovery
 npm run worker -- crypto-market
 npm run worker -- wallet-pnl
+npm run worker -- wallet-evidence
 ```
 
 The stock universe defaults to `AAPL,NVDA,AMD,TSLA,MSFT`. Stock quotes use Finnhub. Wallet ingestion uses Solana JSON-RPC and reads addresses where `wallets.is_tracked = true`. Each run persists status, record count, errors, and completion time in `ingestion_runs`; provider failures are retained in `provider_errors`.
@@ -49,9 +50,16 @@ Required server-side variables:
 - `SOLANA_DISCOVERY_SEEDS` — optional comma-separated public programs or addresses used to discover unverified candidates
 - `COINGECKO_API_KEY` — optional CoinGecko Pro key required for historical on-chain prices and verified PnL
 
+- `BIRDEYE_API_KEY` — optional Birdeye key required by `wallet-evidence` for historical token liquidity and token security observations
+- `WALLET_EVIDENCE_MAX_TOKENS` — optional bounded evidence budget per run (default 10, maximum 100)
+
 Crypto current price, liquidity, market cap, and 24-hour volume use the free DEX Screener API. Historical transaction-time pricing defaults locally to the keyless GeckoTerminal API with explicit retry/backoff. When `COINGECKO_API_KEY` is configured, CoinGecko Pro replaces the public historical provider. Missing candles remain `incomplete`; the system never estimates verified profit from current prices.
 
 Wallet risk metrics are deterministic and point-in-time. Max drawdown uses only verified closed trade returns. Rug exposure requires immutable token risk observations; missing assessments remain `NULL` and are never interpreted as safe. GeckoTerminal does not provide historical reserve liquidity, so current liquidity is never backfilled into historical trades.
+
+Birdeye historical token liquidity is stored with its observed/effective/available timestamps and provider quality. When Birdeye returns token-wide liquidity without a pool address, the pool remains `NULL` and the record is marked as token aggregate; the worker never invents pool identity. Birdeye token security is a current observation and is never backdated to a trade. Unsupported historical risk components remain `UNKNOWN`. Database uniqueness keys make reruns idempotent, while repository lookups and short-lived provider caches avoid duplicate requests.
+
+Wallet history ingestion maintains a per-wallet `before` cursor, deterministic newest-to-oldest ordering, a bounded RPC request budget, and resumable completion state. Run `wallets` repeatedly to deepen history without restarting from the newest transaction.
 
 Wallet Intelligence V3 uses `wallet-verification-policy-v1`. Historical liquidity selection is `latest-effective-highest-liquidity-v1`: use the latest snapshot whose effective and information-available timestamps are not after the evaluation timestamp; ties choose highest liquidity, then lexicographically smallest pool address. Performance history is explicitly a realized-PnL curve, never presented as full wallet equity. Score V3 remains separate from evidence quality and cannot promote `elite` automatically.
 

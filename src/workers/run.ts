@@ -8,6 +8,9 @@ import { runWalletIngestion } from "./wallet-ingestion";
 import { runWalletDiscovery } from "./wallet-discovery";
 import { runCryptoMarketIngestion } from "./crypto-market-ingestion";
 import { runWalletPnl } from "./wallet-pnl";
+import { runWalletEvidence } from "./wallet-evidence";
+import { BirdeyeHistoricalLiquidityProvider } from "@/services/liquidity/birdeye-liquidity-provider";
+import { BirdeyeTokenRiskProvider } from "@/services/token-risk/birdeye-token-risk-provider";
 import { DexScreenerProvider } from "@/services/crypto-market/dexscreener-provider";
 import { CoinGeckoHistoricalProvider } from "@/services/crypto-market/coingecko-provider";
 import { GeckoTerminalProvider } from "@/services/crypto-market/geckoterminal-provider";
@@ -22,6 +25,7 @@ async function main() {
     : job === "wallets" ? await runWalletIngestion(new SolanaRpcProvider(env.SOLANA_RPC_URL), repository)
     : job === "wallet-discovery" ? await runWalletDiscovery(new SolanaRpcProvider(env.SOLANA_RPC_URL), repository, env.SOLANA_DISCOVERY_SEEDS.split(",").map((value) => value.trim()).filter(Boolean))
     : job === "crypto-market" ? await runCryptoMarketIngestion(new DexScreenerProvider(), repository)
+    : job === "wallet-evidence" ? env.BIRDEYE_API_KEY ? await runWalletEvidence(new BirdeyeHistoricalLiquidityProvider(env.BIRDEYE_API_KEY), new BirdeyeTokenRiskProvider(env.BIRDEYE_API_KEY), repository, env.WALLET_EVIDENCE_MAX_TOKENS) : (() => { throw new Error("BIRDEYE_API_KEY is required for wallet-evidence"); })()
     : await runWalletPnl(env.COINGECKO_API_KEY ? new CoinGeckoHistoricalProvider(env.COINGECKO_API_KEY) : new GeckoTerminalProvider(), repository);
   process.stdout.write(`${JSON.stringify(result)}\n`);
 }

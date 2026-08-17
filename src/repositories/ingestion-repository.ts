@@ -7,11 +7,12 @@ import { calculateWalletScoreV2, calculateWalletScoreV3 } from "@/domain/wallet-
 import { calculateRugExposure, selectRiskAt, type PointInTimeRisk, type TokenRiskClassification } from "@/domain/token-risk";
 import { classifyExecutionCapacity, selectPointInTimeLiquidity, type LiquiditySnapshot } from "@/domain/historical-liquidity";
 import { buildRealizedPnlCurve, calculateDrawdown, PERFORMANCE_CURVE_VERSION } from "@/domain/wallet-performance";
-import { calculateDataQualityV3, evaluateWalletVerification } from "@/domain/wallet-verification";
+import { buildVerificationProgress, calculateDataQualityV3, evaluateWalletVerification, WALLET_VERIFICATION_POLICY } from "@/domain/wallet-verification";
+import type { TokenRiskAssessment } from "@/services/token-risk/provider";
 
 const WALLET_ENRICHMENT_VERSION = "wallet-enrichment-v2";
 
-export type JobKind = "stock_quotes" | "wallet_transactions" | "wallet_discovery" | "crypto_market" | "wallet_pnl";
+export type JobKind = "stock_quotes" | "wallet_transactions" | "wallet_discovery" | "crypto_market" | "wallet_pnl" | "wallet_evidence";
 
 export class IngestionRepository {
   constructor(private readonly db: SupabaseClient) {}
@@ -19,7 +20,7 @@ export class IngestionRepository {
   async trackedWallets() {
     const { data, error } = await this.db.from("wallets").select("id,address,metadata").eq("is_tracked", true);
     if (error) throw error;
-    return (data ?? []) as Array<{ id: string; address: string; metadata: { last_signature?: string } | null }>;
+    return (data ?? []) as Array<{ id: string; address: string; metadata: { last_signature?: string; backfill_before?: string; backfill_complete?: boolean } | null }>;
   }
 
   async saveStockQuotes(quotes: StockQuote[]) {
@@ -58,6 +59,22 @@ export class IngestionRepository {
   async cryptoTokens() {
     const { data: tokens, error } = await this.db.from("crypto_tokens").select("asset_id,mint_address");
     if (error) throw error; return (tokens ?? []) as Array<{ asset_id: string; mint_address: string }>;
+  }
+
+  async walletEvidenceTargets(limit = 10) {
+    const { data, error } = await this.db.from("wallet_transactions").select("asset_id,occurred_at").not("asset_id", "is", null).in("side", ["buy", "sell"]).order("occurred_at", { ascending: true });
+    if (error) throw error; const tokens = await this.cryptoTokens(); const mintByAsset = new Map(tokens.map((item) => [item.asset_id, item.mint_address]));
+    const grouped = new Map<string, { assetId: string; mintAddress: string; from: string; to: string }>();
+    for (const row of data ?? []) { const mintAddress = mintByAsset.get(row.asset_id); if (!mintAddress) continue; const current = grouped.get(row.asset_id); if (!current) grouped.set(row.asset_id, { assetId: row.asset_id, mintAddress, from: row.occurred_at, to: row.occurred_at }); else { if (row.occurred_at < current.from) current.from = row.occurred_at; if (row.occurred_at > current.to) current.to = row.occurred_at; } }
+    return [...grouped.values()].sort((a, b) => a.assetId.localeCompare(b.assetId)).slice(0, Math.max(1, Math.min(limit, 100)));
+  }
+  async hasLiquidityEvidence(assetId: string, provider: string, from: string, to: string) { const { count, error } = await this.db.from("crypto_liquidity_snapshots").select("id", { count: "exact", head: true }).eq("asset_id", assetId).eq("provider", provider).gte("effective_at", from).lte("effective_at", to); if (error) throw error; return (count ?? 0) > 0; }
+  async hasFreshRiskEvidence(assetId: string, provider: string, since: string) { const { count, error } = await this.db.from("token_risk_assessments").select("id", { count: "exact", head: true }).eq("asset_id", assetId).eq("provider", provider).gte("assessed_at", since); if (error) throw error; return (count ?? 0) > 0; }
+  async saveLiquiditySnapshots(snapshots: LiquiditySnapshot[]) { if (!snapshots.length) return 0; const now = new Date().toISOString(); const { error } = await this.db.from("crypto_liquidity_snapshots").upsert(snapshots.map((item) => ({ snapshot_key: `${item.assetId}:${item.provider}:${item.effectiveAt}:${item.poolAddress ?? "token_aggregate"}`, asset_id: item.assetId, pool_address: item.poolAddress, liquidity_usd: item.liquidityUsd, provider: item.provider, selection_version: "latest-effective-highest-liquidity-v1", observed_at: now, effective_at: item.effectiveAt, information_available_at: item.informationAvailableAt, data_quality: item.quality, raw_payload: { scope: item.poolAddress ? "pool" : "token_aggregate" } })), { onConflict: "snapshot_key", ignoreDuplicates: true }); if (error) throw error; return snapshots.length; }
+  async saveTokenRiskAssessment(assetId: string, assessment: TokenRiskAssessment) { const { data, error } = await this.db.from("token_risk_assessments").upsert({ asset_id: assetId, provider: assessment.provider, risk_version: assessment.riskVersion, assessed_at: assessment.assessedAt, information_cutoff_at: assessment.informationCutoffAt, information_available_at: assessment.informationAvailableAt, rug_risk_score: assessment.rugRiskScore, rug_status: assessment.rugStatus, risk_components: assessment.riskComponents, data_quality: assessment.dataQuality }, { onConflict: "asset_id,provider,risk_version,information_cutoff_at", ignoreDuplicates: false }).select("id").single(); if (error) throw error;
+    const components = (assessment.riskComponents as { components?: Array<{ key: string; value: unknown; status: string; observedAt: string; informationAvailableAt: string; source: string }> }).components ?? [];
+    if (components.length) { const { error: componentError } = await this.db.from("token_risk_components").upsert(components.map((item) => ({ assessment_id: data.id, component_key: item.key, component_value: item.value, component_status: item.status, observed_at: item.observedAt, information_available_at: item.informationAvailableAt, source: item.source })), { onConflict: "assessment_id,component_key", ignoreDuplicates: false }); if (componentError) throw componentError; }
+    return 1;
   }
 
   async saveCryptoMarketPoints(points: CryptoMarketPoint[]) {
@@ -160,7 +177,8 @@ export class IngestionRepository {
       if (curve.length) { const { error: curveError } = await this.db.from("wallet_performance_points").insert(curve.map((point) => ({ wallet_id: walletId, trade_cycle_id: point.tradeCycleId, curve_version: PERFORMANCE_CURVE_VERSION, point_at: point.timestamp, cumulative_realized_pnl_usd: point.cumulativeRealizedPnlUsd, cumulative_return: point.cumulativeReturn, equity_index: point.equityIndex, information_available_at: now }))); if (curveError) throw curveError; }
       const historyDays = cycles.length ? Math.max(0, (new Date(now).getTime() - new Date(cycles.map((item) => item.firstEntryAt).sort()[0]).getTime()) / 86_400_000) : 0;
       const dataQualityV3 = calculateDataQualityV3({ transaction: quality, pricing: pricingCoverage, liquidity: liquidityCoverage, fees: cycles.length ? Math.round(cycles.reduce((sum, item) => sum + item.executionCompleteness, 0) / cycles.length) : 0, priorityFees: 0, risk: riskCoverage, drawdownAvailable: drawdown.status === "available", tradeCycles: quality });
-      const verification = evaluateWalletVerification({ verifiedTradeCycles: metrics.verifiedTrades, overallDataQuality: dataQualityV3, pricingCoverage, liquidityCoverage, riskCoverage, historyDays: Math.floor(historyDays), drawdownAvailable: drawdown.status === "available" });
+      const verificationInput = { verifiedTradeCycles: metrics.verifiedTrades, overallDataQuality: dataQualityV3, pricingCoverage, liquidityCoverage, riskCoverage, historyDays: Math.floor(historyDays), drawdownAvailable: drawdown.status === "available" };
+      const verification = evaluateWalletVerification(verificationInput); const progress = buildVerificationProgress(verificationInput);
       const { error: metricError } = await this.db.from("wallet_metric_snapshots").insert({ wallet_id: walletId, engine_version: POSITION_ENGINE_VERSION,
         scoring_version: "wallet-metrics-v2-preparation", calculated_at: now, information_available_through: now, closed_trades: metrics.closedTrades,
         verified_trades: metrics.verifiedTrades, wins: metrics.wins, losses: metrics.losses, win_rate: metrics.winRate, median_return: metrics.medianReturn,
@@ -189,12 +207,24 @@ export class IngestionRepository {
         eligible_status: verification.eligibleStatus, requirements_passed: verification.passed, requirements_failed: verification.failed,
         evidence: { verifiedTrades: metrics.verifiedTrades, dataQualityV3, pricingCoverage, liquidityCoverage, riskCoverage, historyDays: Math.floor(historyDays), drawdownStatus: drawdown.status } });
       if (verificationError) throw verificationError;
+      const { error: progressError } = await this.db.from("wallet_verification_progress").insert({ wallet_id: walletId, policy_version: progress.policyVersion,
+        calculated_at: now, eligible_status: verification.eligibleStatus, verified_trades: metrics.verifiedTrades,
+        required_verified_trades: WALLET_VERIFICATION_POLICY.minimumVerifiedTradeCycles, history_days: Math.floor(historyDays), required_history_days: WALLET_VERIFICATION_POLICY.minimumHistoryDays,
+        liquidity_coverage: liquidityCoverage, required_liquidity_coverage: WALLET_VERIFICATION_POLICY.minimumLiquidityCoverage,
+        risk_coverage: riskCoverage, required_risk_coverage: WALLET_VERIFICATION_POLICY.minimumRiskCoverage,
+        data_quality: dataQualityV3, required_data_quality: WALLET_VERIFICATION_POLICY.minimumOverallDataQuality,
+        pricing_coverage: pricingCoverage, required_pricing_coverage: WALLET_VERIFICATION_POLICY.minimumPricingCoverage,
+        drawdown_available: drawdown.status === "available", blockers: verification.failed, progress }); if (progressError) throw progressError;
     }
     return saved;
   }
 
   async updateWalletCursor(walletId: string, signature: string) {
     const { error } = await this.db.rpc("update_wallet_sync_cursor", { target_wallet_id: walletId, new_signature: signature });
+    if (error) throw error;
+  }
+  async updateWalletBackfillCursor(walletId: string, signature: string | null, complete: boolean) {
+    const { error } = await this.db.rpc("update_wallet_backfill_cursor", { target_wallet_id: walletId, before_signature: signature, is_complete: complete });
     if (error) throw error;
   }
 

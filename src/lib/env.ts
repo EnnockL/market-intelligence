@@ -6,6 +6,7 @@ const workerSchema = z.object({
   STOCK_SYMBOLS: z.string().default("AAPL,NVDA,AMD,TSLA,MSFT"),
   SOLANA_DISCOVERY_SEEDS: z.string().default("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"),
   COINGECKO_API_KEY: z.string().min(1).optional(),
+  BIRDEYE_API_KEY: z.string().min(1).optional(), WALLET_EVIDENCE_MAX_TOKENS: z.coerce.number().int().min(1).max(100).default(10),
 });
 
 export type WorkerEnv = z.infer<typeof workerSchema>;

@@ -9,8 +9,10 @@ export interface NormalizedWalletTransaction {
 }
 
 export interface WalletTransactionBatch {
-  transactions: NormalizedWalletTransaction[]; newestSignature: string | null; rateLimit: ProviderRateLimit;
+  transactions: NormalizedWalletTransaction[]; newestSignature: string | null; oldestSignature: string | null;
+  hasMore: boolean; requestsUsed: number; rateLimit: ProviderRateLimit;
 }
+export interface WalletHistoryRequest { untilSignature?: string; beforeSignature?: string; limit?: number; maxRequests?: number; }
 
 export interface WalletDiscoveryCandidate {
   address: string; score: number; dataQuality: number; observedTransactions: number;
@@ -20,6 +22,6 @@ export interface WalletDiscoveryCandidate {
 
 export interface BlockchainDataProvider {
   readonly chain: string; readonly name: string;
-  getWalletTransactions(address: string, untilSignature?: string): Promise<WalletTransactionBatch>;
+  getWalletTransactions(address: string, request?: WalletHistoryRequest): Promise<WalletTransactionBatch>;
   discoverWalletCandidates(seedAddresses: string[]): Promise<WalletDiscoveryCandidate[]>;
 }
