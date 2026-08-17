@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { EventEnvelope } from "@/domain/events";
 import { deterministicDigest } from "@/domain/events";
-import { evaluateFastFlow, findVerifiedConvergence, FAST_FLOW_POLICY, type FastSafetyEvidence, type IndependenceEvidence, type VerifiedBuy } from "@/domain/fast-flow";
+import { evaluateFastFlow, findVerifiedConvergence, FAST_FLOW_POLICY, measureFastFlowLatency, type FastSafetyEvidence, type IndependenceEvidence, type VerifiedBuy } from "@/domain/fast-flow";
 import { OPPORTUNITY_POLICY_VERSION } from "@/domain/opportunities";
 import { EvidenceRepository } from "@/services/evidence/repository";
 import { OpportunityRepository } from "@/services/opportunities/repository";
@@ -11,12 +11,13 @@ export class FastFlowService {
   private readonly evidence:EvidenceRepository; private readonly opportunities:OpportunityRepository;
   constructor(private readonly db:SupabaseClient){this.evidence=new EvidenceRepository(db);this.opportunities=new OpportunityRepository(db);}
   async handle(event:EventEnvelope){if(event.eventType!=="wallet.buy_detected"||!event.assetId)return {status:"ignored" as const}; const now=new Date().toISOString();
+    const {data:existing,error:existingError}=await this.db.from("opportunity_revisions").select("opportunity_id,state").eq("trigger_event_id",event.eventId).eq("revision_type","v0_fast_safety").limit(1).maybeSingle();if(existingError)throw existingError;if(existing)return{status:"already_evaluated" as const,opportunityId:existing.opportunity_id,state:existing.state};
     const buys=await this.verifiedBuys(event.assetId,event.occurredAt,now); const cluster=findVerifiedConvergence(buys).find(items=>items.some(item=>item.eventId===event.eventId)); if(!cluster)return {status:"no_convergence" as const};
     const independence=await this.independence(cluster,now); const safety=await this.safety(event.assetId,now); const evaluation=evaluateFastFlow(cluster,independence,safety);
     const source=cluster[0]; const opportunityId=await this.opportunities.create({opportunityId:randomUUID(),assetId:event.assetId,opportunityType:"fast_flow",detectedAt:now,createdFromEventId:source.eventId,policyVersion:FAST_FLOW_POLICY.version});
     const {data:aggregate,error}=await this.db.from("opportunities").select("current_state,current_revision").eq("id",opportunityId).single(); if(error)throw error;
     const refs=await this.evidenceRefs(evaluation.evidenceIds); await this.opportunities.appendRevision({opportunityId,revisionNumber:Number(aggregate.current_revision)+1,revisionType:"v0_fast_safety",currentState:aggregate.current_state,nextState:evaluation.state,
-      createdAt:now,informationCutoffAt:now,triggerEventId:event.eventId,evidenceRefs:refs,agentOutputs:{fastFlow:{walletIds:evaluation.walletIds,eventIds:evaluation.eventIds,windowSeconds:FAST_FLOW_POLICY.windowSeconds}},safetyResult:evaluation.safetyResult,
+      createdAt:now,informationCutoffAt:now,triggerEventId:event.eventId,evidenceRefs:refs,agentOutputs:{fastFlow:{walletIds:evaluation.walletIds,eventIds:evaluation.eventIds,windowSeconds:FAST_FLOW_POLICY.windowSeconds,latency:measureFastFlowLatency(cluster,now)}},safetyResult:evaluation.safetyResult,
       opportunityScore:evaluation.opportunityScore,riskScore:evaluation.riskScore,dataQuality:evaluation.dataQuality}); return {status:"evaluated" as const,opportunityId,state:evaluation.state}; }
 
   private async verifiedBuys(assetId:string,occurredAt:string,cutoff:string){const radius=FAST_FLOW_POLICY.windowSeconds*1000;const from=new Date(new Date(occurredAt).getTime()-radius).toISOString(),to=new Date(new Date(occurredAt).getTime()+radius).toISOString();

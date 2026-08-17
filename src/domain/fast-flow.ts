@@ -6,6 +6,17 @@ export interface VerifiedBuy { eventId: string; eventEvidenceId: string; assetId
 export interface IndependenceEvidence { status: "confirmed" | "related" | "unknown"; evidenceIds: string[]; relationshipTypes: string[]; dataQuality: number; }
 export interface FastSafetyEvidence { liquidityUsd: number | null; liquidityQuality: number; liquidityEvidenceId: string | null; riskStatus: "LOW_RISK" | "ELEVATED" | "HIGH_RISK" | "CONFIRMED_RUG" | "UNKNOWN"; riskQuality: number; riskEvidenceId: string | null; authorityCoverage: "complete" | "partial" | "unknown"; }
 export interface FastFlowEvaluation { state: OpportunityState; blockers: string[]; walletIds: string[]; eventIds: string[]; evidenceIds: string[]; detectedAt: string; informationCutoffAt: string; opportunityScore: number; riskScore: number | null; dataQuality: number; safetyResult: Record<string, unknown>; }
+export interface FastFlowLatency { signalSpanMs: number; lastEventAvailabilityToEvaluationMs: number; firstEventToEvaluationMs: number; evaluatedAt: string; }
+
+export function measureFastFlowLatency(cluster: VerifiedBuy[], evaluatedAt: string): FastFlowLatency {
+  if (!cluster.length) throw new Error("Fast Flow latency requires at least one event");
+  const evaluated = new Date(evaluatedAt).getTime();
+  const occurred = cluster.map((item) => new Date(item.occurredAt).getTime());
+  const available = cluster.map((item) => new Date(item.availableAt).getTime());
+  return { signalSpanMs: Math.max(...occurred) - Math.min(...occurred),
+    lastEventAvailabilityToEvaluationMs: Math.max(0, evaluated - Math.max(...available)),
+    firstEventToEvaluationMs: Math.max(0, evaluated - Math.min(...occurred)), evaluatedAt };
+}
 
 export function findVerifiedConvergence(events: VerifiedBuy[]) {
   const byAsset = new Map<string, VerifiedBuy[]>(); for (const event of events) byAsset.set(event.assetId, [...(byAsset.get(event.assetId) ?? []), event]);

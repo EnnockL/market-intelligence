@@ -25,6 +25,8 @@ Missing evidence produces `enriching`. Related wallets, bot/MEV clusters, insuff
 
 Every evaluation creates or reuses one deterministic `fast_flow` opportunity and appends an immutable `v0_fast_safety` revision. Event, wallet verification, relationship, liquidity, and token-risk records are registered as stable evidence references. All records must have been available at or before the revision cutoff.
 
+The v0 agent output stores the signal span, latency from the last event becoming available to evaluation, and end-to-end latency from the first buy to evaluation. A trigger event that already produced a v0 revision is treated as completed during outbox crash recovery, preventing duplicate revisions.
+
 ## Current limitation
 
 The relationship-observation schema is ready, but no clustering/funding provider populates it yet. Therefore real convergence will remain `enriching` until pairwise independence is supported by evidence. This is intentional and prevents correlated wallets from appearing as independent Smart Money.
