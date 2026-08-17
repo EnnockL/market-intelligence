@@ -9,11 +9,10 @@ import { classifyExecutionCapacity, liquiditySnapshotFromObservation, selectPoin
 import { buildRealizedPnlCurve, calculateDrawdown, PERFORMANCE_CURVE_VERSION } from "@/domain/wallet-performance";
 import { buildVerificationProgress, calculateDataQualityV3, evaluateWalletVerification, WALLET_VERIFICATION_POLICY } from "@/domain/wallet-verification";
 import type { TokenRiskAssessment } from "@/services/token-risk/provider";
-import type { FastFlowBuyEvent, FastFlowEvaluation, FastFlowSafetyEvidence, WalletLifecycle } from "@/domain/opportunities";
 
 const WALLET_ENRICHMENT_VERSION = "wallet-enrichment-v2";
 
-export type JobKind = "stock_quotes" | "wallet_transactions" | "wallet_discovery" | "crypto_market" | "wallet_pnl" | "wallet_evidence" | "fast_flow";
+export type JobKind = "stock_quotes" | "wallet_transactions" | "wallet_discovery" | "crypto_market" | "wallet_pnl" | "wallet_evidence";
 
 export class IngestionRepository {
   constructor(private readonly db: SupabaseClient) {}
@@ -47,69 +46,6 @@ export class IngestionRepository {
     return inserted;
   }
 
-  async fastFlowCursor() {
-    const { data, error } = await this.db.from("event_consumer_cursors").select("last_available_at,last_event_id").eq("consumer_name", "fast-flow-v1").maybeSingle();
-    if (error) throw error;
-    return data ? { availableAt: data.last_available_at as string, eventId: data.last_event_id as string } : null;
-  }
-
-  async fastFlowInputs(since: string): Promise<{ events: FastFlowBuyEvent[]; safetyByAsset: Map<string, FastFlowSafetyEvidence>; nextCursor: { availableAt: string; eventId: string } | null }> {
-    const { data: rows, error } = await this.db.from("event_outbox")
-      .select("id,asset_id,wallet_id,occurred_at,available_at")
-      .eq("event_type", "wallet.buy_detected").not("asset_id", "is", null).gte("available_at", since)
-      .order("available_at", { ascending: true }).order("id", { ascending: true }).limit(2_000);
-    if (error) throw error;
-    const walletIds = [...new Set((rows ?? []).map((row) => row.wallet_id as string))];
-    const assetIds = [...new Set((rows ?? []).map((row) => row.asset_id as string))];
-    const { data: scores, error: scoreError } = walletIds.length ? await this.db.from("wallet_scores")
-      .select("wallet_id,lifecycle,data_quality,calculated_at").in("wallet_id", walletIds).order("calculated_at", { ascending: false }) : { data: [], error: null };
-    if (scoreError) throw scoreError;
-    const latestScore = new Map<string, { lifecycle: WalletLifecycle; dataQuality: number }>();
-    for (const score of scores ?? []) if (!latestScore.has(score.wallet_id)) latestScore.set(score.wallet_id, { lifecycle: score.lifecycle as WalletLifecycle, dataQuality: Number(score.data_quality) });
-    const events = (rows ?? []).flatMap((row) => {
-      const score = latestScore.get(row.wallet_id);
-      return score ? [{ eventId: row.id as string, assetId: row.asset_id as string, walletId: row.wallet_id as string, occurredAt: row.occurred_at as string, availableAt: row.available_at as string, walletLifecycle: score.lifecycle, walletDataQuality: score.dataQuality }] : [];
-    });
-    const [{ data: liquidity, error: liquidityError }, { data: risks, error: riskError }] = await Promise.all([
-      assetIds.length ? this.db.from("crypto_liquidity_snapshots").select("asset_id,liquidity_usd,data_quality,provider,effective_at,information_available_at").in("asset_id", assetIds).order("information_available_at", { ascending: false }) : Promise.resolve({ data: [], error: null }),
-      assetIds.length ? this.db.from("token_risk_assessments").select("asset_id,rug_status,data_quality,provider,information_cutoff_at,information_available_at").in("asset_id", assetIds).order("information_available_at", { ascending: false }) : Promise.resolve({ data: [], error: null }),
-    ]);
-    if (liquidityError) throw liquidityError;
-    if (riskError) throw riskError;
-    const latestLiquidity = new Map<string, (typeof liquidity)[number]>();
-    for (const item of liquidity ?? []) if (!latestLiquidity.has(item.asset_id)) latestLiquidity.set(item.asset_id, item);
-    const latestRisk = new Map<string, (typeof risks)[number]>();
-    for (const item of risks ?? []) if (!latestRisk.has(item.asset_id)) latestRisk.set(item.asset_id, item);
-    const safetyByAsset = new Map<string, FastFlowSafetyEvidence>();
-    for (const assetId of assetIds) {
-      const liquidityItem = latestLiquidity.get(assetId); const riskItem = latestRisk.get(assetId);
-      safetyByAsset.set(assetId, {
-        liquidityUsd: liquidityItem ? Number(liquidityItem.liquidity_usd) : null,
-        liquidityDataQuality: liquidityItem ? Number(liquidityItem.data_quality) : 0,
-        liquidityProvider: liquidityItem?.provider ?? null, liquidityObservedAt: liquidityItem?.effective_at ?? null,
-        riskStatus: riskItem?.rug_status ?? "UNKNOWN", riskDataQuality: riskItem ? Number(riskItem.data_quality) : 0,
-        riskProvider: riskItem?.provider ?? null, riskObservedAt: riskItem?.information_cutoff_at ?? null,
-      });
-    }
-    const last = rows?.at(-1);
-    return { events, safetyByAsset, nextCursor: last ? { availableAt: last.available_at as string, eventId: last.id as string } : null };
-  }
-
-  async updateFastFlowCursor(cursor: { availableAt: string; eventId: string }) {
-    const { error } = await this.db.from("event_consumer_cursors").upsert({ consumer_name: "fast-flow-v1", last_available_at: cursor.availableAt, last_event_id: cursor.eventId, updated_at: new Date().toISOString() }, { onConflict: "consumer_name" });
-    if (error) throw error;
-  }
-
-  async saveFastFlowEvaluation(item: FastFlowEvaluation) {
-    const { data, error } = await this.db.rpc("save_fast_flow_evaluation", {
-      p_opportunity_key: item.opportunityKey, p_asset_id: item.assetId, p_policy_version: item.policyVersion, p_state: item.state,
-      p_detected_at: item.detectedAt, p_last_evidence_at: item.lastEvidenceAt, p_opportunity_score: item.opportunityScore,
-      p_risk_score: item.riskScore, p_data_quality: item.dataQuality, p_revision_key: item.revisionKey,
-      p_event_ids: item.eventIds, p_wallet_ids: item.walletIds, p_blockers: item.blockers, p_evidence: item.evidence,
-    });
-    if (error) throw error;
-    return Boolean(data);
-  }
 
   private async ensureCryptoAsset(mintAddress: string, decimals: number | null) {
     const { data: existing, error: lookupError } = await this.db.from("crypto_tokens").select("asset_id").eq("mint_address", mintAddress).maybeSingle();

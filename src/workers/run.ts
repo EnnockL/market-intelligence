@@ -15,14 +15,13 @@ import { DexScreenerProvider } from "@/services/crypto-market/dexscreener-provid
 import { CoinGeckoHistoricalProvider } from "@/services/crypto-market/coingecko-provider";
 import { GeckoTerminalProvider } from "@/services/crypto-market/geckoterminal-provider";
 import { FreeCryptoMarketProvider } from "@/services/crypto-market/free-market-provider";
-import { runFastFlow } from "./fast-flow";
 
 async function main() {
   const job = process.argv[2];
-  if (!["stocks", "wallets", "wallet-discovery", "crypto-market", "wallet-pnl", "wallet-evidence", "fast-flow"].includes(job)) throw new Error("Usage: npm run worker -- stocks|wallets|wallet-discovery|crypto-market|wallet-pnl|wallet-evidence|fast-flow");
+  if (!["stocks", "wallets", "wallet-discovery", "crypto-market", "wallet-pnl", "wallet-evidence"].includes(job)) throw new Error("Usage: npm run worker -- stocks|wallets|wallet-discovery|crypto-market|wallet-pnl|wallet-evidence");
   const env = getWorkerEnv();
   const repository = new IngestionRepository(createServiceClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY));
-  const result = job === "fast-flow" ? await runFastFlow(repository) : job === "stocks"
+  const result = job === "stocks"
     ? await runStockIngestion(new FinnhubProvider(env.FINNHUB_API_KEY), repository, env.STOCK_SYMBOLS.split(",").map((value) => value.trim()).filter(Boolean))
     : job === "wallets" ? await runWalletIngestion(new SolanaRpcProvider(env.SOLANA_RPC_URL), repository)
     : job === "wallet-discovery" ? await runWalletDiscovery(new SolanaRpcProvider(env.SOLANA_RPC_URL), repository, env.SOLANA_DISCOVERY_SEEDS.split(",").map((value) => value.trim()).filter(Boolean))

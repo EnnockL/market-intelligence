@@ -1,103 +1,67 @@
 import { deterministicDigest } from "./events";
 
-export const FAST_FLOW_POLICY = {
-  version: "fast-flow-policy-v1",
-  windowSeconds: 15,
-  minimumIndependentWallets: 3,
-  minimumWalletDataQuality: 80,
-  minimumLiquidityUsd: 25_000,
-  minimumLiquidityDataQuality: 80,
-  minimumRiskDataQuality: 80,
-} as const;
-
+export const OPPORTUNITY_POLICY_VERSION = "opportunity-state-policy-v1";
+export const REVISION_TYPES = ["v0_fast_safety", "v1_smart_money", "v2_risk_liquidity", "v3_information", "v4_meta"] as const;
+export type RevisionType = typeof REVISION_TYPES[number];
 export type OpportunityState = "detected" | "fast_opportunity" | "enriching" | "qualified" | "watch" | "rejected" | "paper_trade_candidate";
-export type WalletLifecycle = "candidate" | "reviewing" | "verified";
-export type FastFlowRiskStatus = "LOW_RISK" | "ELEVATED" | "HIGH_RISK" | "CONFIRMED_RUG" | "UNKNOWN";
 
-export interface FastFlowBuyEvent {
-  eventId: string;
-  assetId: string;
-  walletId: string;
-  occurredAt: string;
-  availableAt: string;
-  walletLifecycle: WalletLifecycle;
-  walletDataQuality: number;
+const transitions: Record<OpportunityState, readonly OpportunityState[]> = {
+  detected: ["detected", "fast_opportunity", "enriching", "watch", "rejected"],
+  fast_opportunity: ["fast_opportunity", "enriching", "qualified", "watch", "rejected"],
+  enriching: ["enriching", "qualified", "watch", "rejected"],
+  qualified: ["qualified", "watch", "rejected", "paper_trade_candidate"],
+  watch: ["watch", "enriching", "qualified", "rejected"],
+  rejected: ["rejected", "enriching"],
+  paper_trade_candidate: ["paper_trade_candidate", "watch", "rejected"],
+};
+
+export interface EvidenceReference { evidenceId: string; evidenceType: string; availableAt: string; payloadHash: string; }
+export interface OpportunityRevisionInput {
+  opportunityId: string; revisionNumber: number; revisionType: RevisionType; currentState: OpportunityState; nextState: OpportunityState;
+  createdAt: string; informationCutoffAt: string; triggerEventId: string; evidenceRefs: EvidenceReference[];
+  agentOutputs: Record<string, unknown>; safetyResult: Record<string, unknown>;
+}
+export interface OpportunityAggregate {
+  opportunityId: string; state: OpportunityState; currentRevision: number;
+  revisions: ReadonlyArray<ReturnType<typeof validateOpportunityRevision>>;
 }
 
-export interface FastFlowSafetyEvidence {
-  liquidityUsd: number | null;
-  liquidityDataQuality: number;
-  liquidityProvider: string | null;
-  liquidityObservedAt: string | null;
-  riskStatus: FastFlowRiskStatus;
-  riskDataQuality: number;
-  riskProvider: string | null;
-  riskObservedAt: string | null;
+export function assertValidTransition(current: OpportunityState, next: OpportunityState) {
+  if (!transitions[current].includes(next)) throw new Error(`Invalid opportunity transition: ${current} -> ${next}`);
 }
 
-export interface FastFlowEvaluation {
-  opportunityKey: string;
-  revisionKey: string;
-  state: OpportunityState;
-  assetId: string;
-  detectedAt: string;
-  lastEvidenceAt: string;
-  walletIds: string[];
-  eventIds: string[];
-  opportunityScore: number;
-  riskScore: number | null;
-  dataQuality: number;
-  blockers: string[];
-  evidence: FastFlowSafetyEvidence;
-  policyVersion: string;
+export function validateOpportunityRevision(input: OpportunityRevisionInput) {
+  assertValidTransition(input.currentState, input.nextState);
+  if (input.revisionNumber < 1 || !Number.isInteger(input.revisionNumber)) throw new Error("revisionNumber must be a positive integer");
+  if (input.informationCutoffAt > input.createdAt) throw new Error("informationCutoffAt cannot be after createdAt");
+  const future = input.evidenceRefs.find((reference) => reference.availableAt > input.informationCutoffAt);
+  if (future) throw new Error(`Future evidence rejected: ${future.evidenceId}`);
+  const duplicate = input.evidenceRefs.find((reference, index) => input.evidenceRefs.findIndex((item) => item.evidenceId === reference.evidenceId) !== index);
+  if (duplicate) throw new Error(`Duplicate evidence reference: ${duplicate.evidenceId}`);
+  return { ...input, revisionKey: opportunityRevisionKey(input) };
 }
 
-export function findFastFlowClusters(events: FastFlowBuyEvent[], safetyByAsset: Map<string, FastFlowSafetyEvidence>) {
-  const eligible = events.filter((event) => event.walletLifecycle === "verified" && event.walletDataQuality >= FAST_FLOW_POLICY.minimumWalletDataQuality);
-  const byAsset = new Map<string, FastFlowBuyEvent[]>();
-  for (const event of eligible) byAsset.set(event.assetId, [...(byAsset.get(event.assetId) ?? []), event]);
-  const results: FastFlowEvaluation[] = [];
-  for (const [assetId, items] of byAsset) {
-    const ordered = [...items].sort((a, b) => a.occurredAt.localeCompare(b.occurredAt) || a.walletId.localeCompare(b.walletId) || a.eventId.localeCompare(b.eventId));
-    for (let start = 0; start < ordered.length; start += 1) {
-      const cutoff = new Date(new Date(ordered[start].occurredAt).getTime() + FAST_FLOW_POLICY.windowSeconds * 1000).toISOString();
-      const window = ordered.filter((item) => item.occurredAt >= ordered[start].occurredAt && item.occurredAt <= cutoff);
-      const unique = new Map<string, FastFlowBuyEvent>();
-      for (const item of window) if (!unique.has(item.walletId)) unique.set(item.walletId, item);
-      if (unique.size < FAST_FLOW_POLICY.minimumIndependentWallets) continue;
-      results.push(evaluateFastFlow(assetId, [...unique.values()], safetyByAsset.get(assetId) ?? unknownSafety()));
-      break;
-    }
-  }
-  return results.sort((a, b) => b.detectedAt.localeCompare(a.detectedAt) || a.assetId.localeCompare(b.assetId));
+export function opportunityIdempotencyKey(input: { assetId: string; opportunityType: string; createdFromEventId: string }) {
+  return `opp_${deterministicDigest(input).slice(0, 40)}`;
 }
 
-export function evaluateFastFlow(assetId: string, events: FastFlowBuyEvent[], evidence: FastFlowSafetyEvidence): FastFlowEvaluation {
-  const ordered = [...events].sort((a, b) => a.occurredAt.localeCompare(b.occurredAt) || a.walletId.localeCompare(b.walletId));
-  const walletIds = [...new Set(ordered.map((item) => item.walletId))].sort();
-  const eventIds = ordered.map((item) => item.eventId).sort();
-  const blockers: string[] = [];
-  let state: OpportunityState = "fast_opportunity";
-  if (evidence.riskStatus === "CONFIRMED_RUG" || evidence.riskStatus === "HIGH_RISK") {
-    blockers.push(`risk_status:${evidence.riskStatus}`);
-    state = "rejected";
-  }
-  if (evidence.riskStatus === "UNKNOWN" || evidence.riskDataQuality < FAST_FLOW_POLICY.minimumRiskDataQuality) blockers.push("risk_evidence_incomplete");
-  if (evidence.liquidityUsd === null) blockers.push("liquidity_unknown");
-  else if (evidence.liquidityUsd < FAST_FLOW_POLICY.minimumLiquidityUsd) blockers.push("liquidity_below_minimum");
-  if (evidence.liquidityDataQuality < FAST_FLOW_POLICY.minimumLiquidityDataQuality) blockers.push("liquidity_quality_below_minimum");
-  if (state !== "rejected" && blockers.length) state = "enriching";
-  const knownQuality = [Math.min(...ordered.map((item) => item.walletDataQuality)), evidence.liquidityDataQuality, evidence.riskDataQuality];
-  const dataQuality = Math.round(knownQuality.reduce((sum, value) => sum + value, 0) / knownQuality.length);
-  const riskScore = evidence.riskStatus === "UNKNOWN" ? null : ({ LOW_RISK: 15, ELEVATED: 45, HIGH_RISK: 80, CONFIRMED_RUG: 100 } as const)[evidence.riskStatus];
-  const opportunityScore = Math.min(95, 55 + walletIds.length * 8 + (evidence.liquidityUsd !== null && evidence.liquidityUsd >= FAST_FLOW_POLICY.minimumLiquidityUsd ? 8 : 0));
-  const detectedAt = ordered[0].occurredAt;
-  const lastEvidenceAt = ordered.map((item) => item.availableAt).sort().at(-1) ?? detectedAt;
-  const opportunityKey = `fast-flow:${FAST_FLOW_POLICY.version}:${assetId}:${ordered[0].eventId}`;
-  const revisionPayload = { state, walletIds, eventIds, evidence, blockers, opportunityScore, riskScore, dataQuality };
-  return { opportunityKey, revisionKey: deterministicDigest(revisionPayload), state, assetId, detectedAt, lastEvidenceAt, walletIds, eventIds, opportunityScore, riskScore, dataQuality, blockers, evidence, policyVersion: FAST_FLOW_POLICY.version };
+export function opportunityRevisionKey(input: OpportunityRevisionInput) {
+  return deterministicDigest({ opportunityId: input.opportunityId, revisionType: input.revisionType, nextState: input.nextState, informationCutoffAt: input.informationCutoffAt, triggerEventId: input.triggerEventId, evidenceIds: input.evidenceRefs.map((item) => item.evidenceId).sort(), agentOutputs: input.agentOutputs, safetyResult: input.safetyResult });
 }
 
-function unknownSafety(): FastFlowSafetyEvidence {
-  return { liquidityUsd: null, liquidityDataQuality: 0, liquidityProvider: null, liquidityObservedAt: null, riskStatus: "UNKNOWN", riskDataQuality: 0, riskProvider: null, riskObservedAt: null };
+export function rebuildOpportunity(initial: OpportunityState, revisions: OpportunityRevisionInput[]) {
+  return [...revisions].sort((a, b) => a.revisionNumber - b.revisionNumber).reduce((state, revision, index) => {
+    if (revision.revisionNumber !== index + 1) throw new Error("Opportunity revision sequence has a gap");
+    if (revision.currentState !== state) throw new Error("Opportunity revision state does not match rebuild state");
+    validateOpportunityRevision(revision); return revision.nextState;
+  }, initial);
+}
+
+export function appendOpportunityRevision(aggregate: OpportunityAggregate, input: OpportunityRevisionInput): OpportunityAggregate {
+  if (input.opportunityId !== aggregate.opportunityId) throw new Error("Revision belongs to another opportunity");
+  if (input.revisionNumber !== aggregate.currentRevision + 1) throw new Error("Revision number is not consecutive");
+  if (input.currentState !== aggregate.state) throw new Error("Revision currentState is stale");
+  const revision = Object.freeze(validateOpportunityRevision(input));
+  if (aggregate.revisions.some((item) => item.revisionKey === revision.revisionKey)) throw new Error("Duplicate opportunity revision");
+  return Object.freeze({ opportunityId: aggregate.opportunityId, state: input.nextState, currentRevision: input.revisionNumber, revisions: Object.freeze([...aggregate.revisions, revision]) });
 }
