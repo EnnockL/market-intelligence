@@ -52,7 +52,7 @@ export interface WatchlistItem {
 }
 
 export type IngestionStatus = "running" | "succeeded" | "failed";
-export type IngestionJobKind = "stock_quotes" | "wallet_transactions" | "wallet_discovery" | "crypto_market" | "wallet_pnl";
+export type IngestionJobKind = "stock_quotes" | "wallet_transactions" | "wallet_discovery" | "crypto_market" | "wallet_pnl" | "wallet_evidence" | "fast_flow";
 
 export type WalletDiscoveryStatus = "candidate" | "reviewing" | "verified" | "rejected";
 export interface WalletDiscoveryCandidateRecord {
@@ -117,4 +117,20 @@ export interface CryptoLiquiditySnapshot {
 export interface WalletVerificationEvaluation {
   id: UUID; walletId: UUID; policyVersion: string; evaluatedAt: ISODateTime; dataSnapshotCutoff: ISODateTime;
   currentStatus: string; eligibleStatus: "candidate" | "reviewing" | "verified"; requirementsPassed: Json; requirementsFailed: Json; evidence: Json;
+}
+export interface EventOutboxRecord {
+  id: UUID; eventKey: string; eventType: string; schemaVersion: number; entityType: string; entityId: string;
+  assetId: UUID | null; walletId: UUID | null; occurredAt: ISODateTime; observedAt: ISODateTime; availableAt: ISODateTime;
+  provider: string; sourceRef: string; dataQuality: number; payload: Json; createdAt: ISODateTime; publishedAt: ISODateTime | null;
+}
+export interface OpportunityRecord {
+  id: UUID; opportunityKey: string; assetId: UUID; opportunityType: string; policyVersion: string;
+  state: "detected" | "fast_opportunity" | "enriching" | "qualified" | "watch" | "rejected" | "paper_trade_candidate";
+  detectedAt: ISODateTime; lastEvidenceAt: ISODateTime; opportunityScore: number; riskScore: number | null;
+  dataQuality: number; latestRevision: number; updatedAt: ISODateTime;
+}
+export interface OpportunityRevisionRecord {
+  id: UUID; opportunityId: UUID; revision: number; revisionKey: string; state: OpportunityRecord["state"];
+  evidenceEventIds: UUID[]; walletIds: UUID[]; blockers: Json; evidence: Json; opportunityScore: number;
+  riskScore: number | null; dataQuality: number; informationAvailableAt: ISODateTime; createdAt: ISODateTime;
 }

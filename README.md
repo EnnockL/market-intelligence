@@ -35,6 +35,7 @@ npm run worker -- wallet-discovery
 npm run worker -- crypto-market
 npm run worker -- wallet-pnl
 npm run worker -- wallet-evidence
+npm run worker -- fast-flow
 ```
 
 The stock universe defaults to `AAPL,NVDA,AMD,TSLA,MSFT`. Stock quotes use Finnhub. Wallet ingestion uses Solana JSON-RPC and reads addresses where `wallets.is_tracked = true`. Each run persists status, record count, errors, and completion time in `ingestion_runs`; provider failures are retained in `provider_errors`.
