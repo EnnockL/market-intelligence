@@ -20,24 +20,125 @@ import { runWalletClustering } from "./wallet-clustering";
 import { runJackpotCollector } from "./jackpot-collector";
 import { runJackpotOutcomes } from "./jackpot-outcomes";
 import { runMarketEvents } from "./market-events";
+import { runPaperEligibility } from "./paper-eligibility";
+import { runPaperExecution } from "./paper-execution";
+import { runPaperExits } from "./paper-exits";
+import { runPaperValuation } from "./paper-valuation";
 import { loadEnvConfig } from "@next/env";
 
 loadEnvConfig(process.cwd());
 
 async function main() {
   const job = process.argv[2];
-  if (!["stocks", "wallets", "wallet-discovery", "crypto-market", "wallet-pnl", "wallet-evidence", "wallet-clustering", "fast-flow", "jackpot-collector", "jackpot-outcomes", "market-events"].includes(job)) throw new Error("Usage: npm run worker -- stocks|wallets|wallet-discovery|crypto-market|wallet-pnl|wallet-evidence|wallet-clustering|fast-flow|jackpot-collector|jackpot-outcomes|market-events");
+  if (
+    ![
+      "stocks",
+      "wallets",
+      "wallet-discovery",
+      "crypto-market",
+      "wallet-pnl",
+      "wallet-evidence",
+      "wallet-clustering",
+      "fast-flow",
+      "jackpot-collector",
+      "jackpot-outcomes",
+      "market-events",
+      "paper-eligibility",
+      "paper-execution",
+      "paper-exits",
+      "paper-valuation",
+    ].includes(job)
+  )
+    throw new Error("Unknown worker job");
   const env = getWorkerEnv();
-  const db = createServiceClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
+  const db = createServiceClient(
+    env.NEXT_PUBLIC_SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY,
+  );
   const repository = new IngestionRepository(db);
-  const result = job === "fast-flow" ? await runFastFlow(db,repository) : job === "market-events" ? await runMarketEvents(db,repository) : job === "jackpot-collector" ? await runJackpotCollector(db,repository) : job === "jackpot-outcomes" ? await runJackpotOutcomes(db,repository) : job === "wallet-clustering" ? await runWalletClustering(db,repository,env.WALLET_CLUSTERING_MAX_WALLETS) : job === "stocks"
-    ? await runStockIngestion(new FinnhubProvider(env.FINNHUB_API_KEY), repository, env.STOCK_SYMBOLS.split(",").map((value) => value.trim()).filter(Boolean))
-    : job === "wallets" ? await runWalletIngestion(new SolanaRpcProvider(env.SOLANA_RPC_URL), repository)
-    : job === "wallet-discovery" ? await runWalletDiscovery(new SolanaRpcProvider(env.SOLANA_RPC_URL), repository, env.SOLANA_DISCOVERY_SEEDS.split(",").map((value) => value.trim()).filter(Boolean))
-    : job === "crypto-market" ? await runCryptoMarketIngestion(new FreeCryptoMarketProvider(new DexScreenerProvider(), new GeckoTerminalProvider()), repository)
-    : job === "wallet-evidence" ? env.BIRDEYE_API_KEY ? await runWalletEvidence(new BirdeyeHistoricalLiquidityProvider(env.BIRDEYE_API_KEY), new BirdeyeTokenRiskProvider(env.BIRDEYE_API_KEY), repository, env.WALLET_EVIDENCE_MAX_TOKENS) : (() => { throw new Error("BIRDEYE_API_KEY is required for wallet-evidence"); })()
-    : await runWalletPnl(env.COINGECKO_API_KEY ? new CoinGeckoHistoricalProvider(env.COINGECKO_API_KEY) : new GeckoTerminalProvider(), repository);
+  const result =
+    job === "paper-eligibility"
+      ? await runPaperEligibility(db, repository)
+      : job === "paper-execution"
+        ? await runPaperExecution(db, repository)
+        : job === "paper-exits"
+          ? await runPaperExits(db, repository)
+          : job === "paper-valuation"
+            ? await runPaperValuation(db, repository)
+            : job === "fast-flow"
+              ? await runFastFlow(db, repository)
+              : job === "market-events"
+                ? await runMarketEvents(db, repository)
+                : job === "jackpot-collector"
+                  ? await runJackpotCollector(db, repository)
+                  : job === "jackpot-outcomes"
+                    ? await runJackpotOutcomes(db, repository)
+                    : job === "wallet-clustering"
+                      ? await runWalletClustering(
+                          db,
+                          repository,
+                          env.WALLET_CLUSTERING_MAX_WALLETS,
+                        )
+                      : job === "stocks"
+                        ? await runStockIngestion(
+                            new FinnhubProvider(env.FINNHUB_API_KEY),
+                            repository,
+                            env.STOCK_SYMBOLS.split(",")
+                              .map((value) => value.trim())
+                              .filter(Boolean),
+                          )
+                        : job === "wallets"
+                          ? await runWalletIngestion(
+                              new SolanaRpcProvider(env.SOLANA_RPC_URL),
+                              repository,
+                            )
+                          : job === "wallet-discovery"
+                            ? await runWalletDiscovery(
+                                new SolanaRpcProvider(env.SOLANA_RPC_URL),
+                                repository,
+                                env.SOLANA_DISCOVERY_SEEDS.split(",")
+                                  .map((value) => value.trim())
+                                  .filter(Boolean),
+                              )
+                            : job === "crypto-market"
+                              ? await runCryptoMarketIngestion(
+                                  new FreeCryptoMarketProvider(
+                                    new DexScreenerProvider(),
+                                    new GeckoTerminalProvider(),
+                                  ),
+                                  repository,
+                                )
+                              : job === "wallet-evidence"
+                                ? env.BIRDEYE_API_KEY
+                                  ? await runWalletEvidence(
+                                      new BirdeyeHistoricalLiquidityProvider(
+                                        env.BIRDEYE_API_KEY,
+                                      ),
+                                      new BirdeyeTokenRiskProvider(
+                                        env.BIRDEYE_API_KEY,
+                                      ),
+                                      repository,
+                                      env.WALLET_EVIDENCE_MAX_TOKENS,
+                                    )
+                                  : (() => {
+                                      throw new Error(
+                                        "BIRDEYE_API_KEY is required for wallet-evidence",
+                                      );
+                                    })()
+                                : await runWalletPnl(
+                                    env.COINGECKO_API_KEY
+                                      ? new CoinGeckoHistoricalProvider(
+                                          env.COINGECKO_API_KEY,
+                                        )
+                                      : new GeckoTerminalProvider(),
+                                    repository,
+                                  );
   process.stdout.write(`${JSON.stringify(result)}\n`);
 }
 
-main().catch((error) => { process.stderr.write(`${error instanceof Error ? error.stack : String(error)}\n`); process.exitCode = 1; });
+main().catch((error) => {
+  process.stderr.write(
+    `${error instanceof Error ? error.stack : String(error)}\n`,
+  );
+  process.exitCode = 1;
+});

@@ -40,6 +40,10 @@ npm run worker -- wallet-clustering
 npm run worker -- jackpot-collector
 npm run worker -- jackpot-outcomes
 npm run worker -- market-events
+npm run worker -- paper-eligibility
+npm run worker -- paper-execution
+npm run worker -- paper-exits
+npm run worker -- paper-valuation
 ```
 
 The stock universe defaults to `AAPL,NVDA,AMD,TSLA,MSFT`. Stock quotes use Finnhub. Wallet ingestion uses Solana JSON-RPC and reads addresses where `wallets.is_tracked = true`. Each run persists status, record count, errors, and completion time in `ingestion_runs`; provider failures are retained in `provider_errors`.
