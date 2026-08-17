@@ -26,6 +26,7 @@ import { runPaperExits } from "./paper-exits";
 import { runPaperValuation } from "./paper-valuation";
 import { runPerformance } from "./performance";
 import { runFx } from "./fx";
+import { runQualification } from "./qualification";
 import { loadEnvConfig } from "@next/env";
 
 loadEnvConfig(process.cwd());
@@ -51,6 +52,7 @@ async function main() {
       "paper-valuation",
       "performance",
       "fx",
+      "qualification",
     ].includes(job)
   )
     throw new Error("Unknown worker job");
@@ -61,7 +63,9 @@ async function main() {
   );
   const repository = new IngestionRepository(db);
   const result =
-    job === "fx"
+    job === "qualification"
+      ? await runQualification(db, repository)
+      : job === "fx"
       ? await runFx(db, repository)
       : job === "performance"
         ? await runPerformance(db, repository)

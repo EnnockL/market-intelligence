@@ -20,17 +20,20 @@ import { getJackpotData } from "@/data/jackpot-data";
 import { JackpotRadar } from "@/components/dashboard/jackpot-radar";
 import { PaperPortfolioPanel } from "@/components/dashboard/paper-portfolio-panel";
 import { getPaperPortfolioData } from "@/data/paper-portfolio-data";
+import { getQualificationData } from "@/data/qualification-data";
+import { QualificationDiagnostics } from "@/components/dashboard/qualification-diagnostics";
 
 export const dynamic = "force-dynamic";
 
 export default async function Dashboard() {
-  const [stockData, walletDiscovery, fastFlow, jackpot, paper] =
+  const [stockData, walletDiscovery, fastFlow, jackpot, paper, qualification] =
     await Promise.all([
       getDashboardStockData(),
       getWalletDiscoveryData(),
       getFastFlowData(),
       getJackpotData(),
       getPaperPortfolioData(),
+      getQualificationData(),
     ]);
   return (
     <main>
@@ -109,6 +112,7 @@ export default async function Dashboard() {
       <FastFlowPanel data={fastFlow} />
       <JackpotRadar data={jackpot} />
       <PaperPortfolioPanel data={paper} />
+      <QualificationDiagnostics data={qualification} />
       <section className="intelligence-grid intelligence-grid--single">
         <StockRadarPanel stocks={stockData.stocks} />
       </section>

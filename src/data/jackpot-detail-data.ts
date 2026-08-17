@@ -6,7 +6,7 @@ export async function getJackpotDetail(id: string) {
     const { data, error } = await db
       .from("jackpot_candidates")
       .select(
-        "*,assets(symbol,name),jackpot_candidate_revisions(*),jackpot_candidate_outcomes(*)",
+        "*,assets(symbol,name),jackpot_candidate_revisions(*),jackpot_candidate_outcomes(*),qualification_evaluations(*,qualification_requirements(*))",
       )
       .eq("id", id)
       .maybeSingle();
@@ -20,6 +20,7 @@ export async function getJackpotDetail(id: string) {
       (a: any, b: any) =>
         b.information_cutoff_at.localeCompare(a.information_cutoff_at),
     );
+    const qualifications = [...(data.qualification_evaluations ?? [])].sort((a: any,b: any)=>b.candidate_revision-a.candidate_revision);
     return {
       data: {
         id: data.id,
@@ -51,6 +52,7 @@ export async function getJackpotDetail(id: string) {
               cutoff: outcomes[0].information_cutoff_at,
             }
           : null,
+        qualification: qualifications[0] ? { revision: qualifications[0].candidate_revision, policyVersion: qualifications[0].policy_version, decision: qualifications[0].final_decision, reason: qualifications[0].decision_reason, cutoff: qualifications[0].information_cutoff_at, requirements: [...(qualifications[0].qualification_requirements ?? [])].sort((a:any,b:any)=>a.requirement_key.localeCompare(b.requirement_key)).map((r:any)=>({ key:r.requirement_key,status:r.status,blocker:r.blocker_code,observed:r.observed_value,required:r.required_value,evidence:r.evidence_refs??[],source:r.source,quality:number(r.data_quality) })) } : null,
       },
       error: null,
     };

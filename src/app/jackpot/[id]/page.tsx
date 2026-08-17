@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getJackpotDetail } from "@/data/jackpot-detail-data";
+import s from "./qualification.module.css";
 
 export const dynamic = "force-dynamic";
 
@@ -131,6 +132,11 @@ export default async function JackpotDetailPage({
           </dl>
         </section>
       </div>
+      {item.qualification && <section className={`radar-panel ${s.section}`}>
+        <div className="panel-title"><div><span className="eyebrow">QUALIFICATION DIAGNOSTICS</span><h2>Requirement evidence</h2><p>Revision {item.qualification.revision} · {item.qualification.policyVersion}</p></div></div>
+        <div className={s.summary}><span className={s.decision}>{item.qualification.decision}</span><strong>{item.qualification.reason.replaceAll("_"," ")}</strong><small>Cutoff {format(item.qualification.cutoff)}</small></div>
+        <div className={s.grid}>{item.qualification.requirements.map(r=><article className={s.row} key={r.key}><header><h3>{r.key.replaceAll("_"," ")}</h3><b className={s[r.status.toLowerCase() as "pass"|"fail"|"unknown"|"not_applicable"]}>{r.status.replaceAll("_"," ")}</b></header><dl><dt>Observed</dt><dd>{display(r.observed)}</dd><dt>Required</dt><dd>{display(r.required)}</dd><dt>Blocker</dt><dd>{r.blocker ?? "None"}</dd><dt>Source</dt><dd>{r.source ?? "Unknown"}</dd><dt>Data quality</dt><dd>{r.quality == null ? "Unknown" : `${r.quality}%`}</dd></dl><div className={s.refs}>{r.evidence.length ? r.evidence.map((e:any)=>e.id).join(" · ") : "No evidence reference"}</div></article>)}</div>
+      </section>}
       {item.outcome && (
         <section className="radar-panel jackpot-outcome">
           <div className="panel-title">
@@ -176,3 +182,4 @@ function format(v: string) {
     timeZone: "Europe/Stockholm",
   }).format(new Date(v));
 }
+function display(v: unknown){return v === null || v === undefined ? "Unknown" : typeof v === "object" ? JSON.stringify(v) : String(v)}
