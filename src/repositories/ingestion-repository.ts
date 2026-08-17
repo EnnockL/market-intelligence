@@ -12,7 +12,7 @@ import type { TokenRiskAssessment } from "@/services/token-risk/provider";
 
 const WALLET_ENRICHMENT_VERSION = "wallet-enrichment-v2";
 
-export type JobKind = "stock_quotes" | "wallet_transactions" | "wallet_discovery" | "crypto_market" | "wallet_pnl" | "wallet_evidence" | "fast_flow" | "wallet_clustering" | "jackpot_collector" | "jackpot_outcomes";
+export type JobKind = "stock_quotes" | "wallet_transactions" | "wallet_discovery" | "crypto_market" | "wallet_pnl" | "wallet_evidence" | "fast_flow" | "wallet_clustering" | "jackpot_collector" | "jackpot_outcomes" | "market_events";
 
 export class IngestionRepository {
   constructor(private readonly db: SupabaseClient) {}
