@@ -28,6 +28,7 @@ import { runPerformance } from "./performance";
 import { runFx } from "./fx";
 import { runQualification } from "./qualification";
 import { runDataGapClosure } from "./data-gap-closure";
+import { runSimulation } from "./simulation";
 import { loadEnvConfig } from "@next/env";
 
 loadEnvConfig(process.cwd());
@@ -55,6 +56,7 @@ async function main() {
       "fx",
       "qualification",
       "data-gap-closure",
+      "simulation",
     ].includes(job)
   )
     throw new Error("Unknown worker job");
@@ -65,7 +67,7 @@ async function main() {
   );
   const repository = new IngestionRepository(db);
   const result =
-    job === "data-gap-closure"
+    job === "simulation" ? await runSimulation(db, repository) : job === "data-gap-closure"
       ? env.BIRDEYE_API_KEY
         ? await runDataGapClosure(db, repository, new BirdeyeHistoricalLiquidityProvider(env.BIRDEYE_API_KEY), new BirdeyeTokenRiskProvider(env.BIRDEYE_API_KEY), env.WALLET_EVIDENCE_MAX_TOKENS)
         : (()=>{throw new Error("BIRDEYE_API_KEY is required for data-gap-closure")})()
