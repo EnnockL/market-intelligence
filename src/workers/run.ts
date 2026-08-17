@@ -35,6 +35,7 @@ import { runExpertKnowledge } from "./expert-knowledge";
 import { runBaselineForecast } from "./baseline-forecast";
 import { runForecastPerformance } from "./forecast-performance";
 import { runForecastScheduler } from "./forecast-scheduler";
+import { runSpecialistAgents } from "./specialist-agents";
 import { loadEnvConfig } from "@next/env";
 
 loadEnvConfig(process.cwd());
@@ -69,6 +70,7 @@ async function main() {
       "baseline-forecast",
       "forecast-performance",
       "forecast-scheduler",
+      "specialist-agents",
     ].includes(job)
   )
     throw new Error("Unknown worker job");
@@ -79,7 +81,7 @@ async function main() {
   );
   const repository = new IngestionRepository(db);
   const result =
-    job === "forecast-scheduler" ? await runForecastScheduler(db, repository) : job === "forecast-performance" ? await runForecastPerformance(db, repository) : job === "baseline-forecast" ? await runBaselineForecast(db, repository) : job === "expert-knowledge" ? await runExpertKnowledge(db, repository) : job === "forecast-catalyst" ? await runForecastCatalyst(db, repository) : job === "historical-replay" ? await runHistoricalReplay(db, repository) : job === "simulation" ? await runSimulation(db, repository) : job === "data-gap-closure"
+    job === "specialist-agents" ? await runSpecialistAgents(db, repository) : job === "forecast-scheduler" ? await runForecastScheduler(db, repository) : job === "forecast-performance" ? await runForecastPerformance(db, repository) : job === "baseline-forecast" ? await runBaselineForecast(db, repository) : job === "expert-knowledge" ? await runExpertKnowledge(db, repository) : job === "forecast-catalyst" ? await runForecastCatalyst(db, repository) : job === "historical-replay" ? await runHistoricalReplay(db, repository) : job === "simulation" ? await runSimulation(db, repository) : job === "data-gap-closure"
       ? env.BIRDEYE_API_KEY
         ? await runDataGapClosure(db, repository, new BirdeyeHistoricalLiquidityProvider(env.BIRDEYE_API_KEY), new BirdeyeTokenRiskProvider(env.BIRDEYE_API_KEY), env.WALLET_EVIDENCE_MAX_TOKENS)
         : (()=>{throw new Error("BIRDEYE_API_KEY is required for data-gap-closure")})()
