@@ -1,6 +1,8 @@
 import { loadEnvConfig } from "@next/env";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { beforeAll, describe, expect, it } from "vitest";
+import { evaluateWalletIndependence } from "@/domain/wallet-clustering";
+import { WalletClusteringRepository } from "@/services/wallet-clustering/repository";
 
 loadEnvConfig(process.cwd());
 
@@ -125,5 +127,51 @@ suite("Supabase decision infrastructure", () => {
     expect(revision.evidence_refs).toHaveLength(1);
     const mutation = await db.from("opportunity_revisions").update({ state: "qualified" }).eq("id", revision.id);
     expect(mutation.error?.message).toMatch(/immutable/i);
+  });
+
+  it("keeps wallet cluster history immutable and point-in-time", async () => {
+    const { data: wallets, error: walletError } = await db.from("wallets").select("id").order("created_at").limit(2);
+    expect(walletError).toBeNull();
+    if (!wallets || wallets.length < 2) throw new Error("Two wallets are required for clustering integration");
+    const earlyCutoff = "2026-01-01T00:00:00.000Z", laterCutoff = "2026-01-02T00:00:00.000Z";
+    const base = { scope_hash: `integration-${run}`, model_version: "wallet-independence-v1", raw_wallet_count: 2,
+      relationship_pair_count: 1, observed_at: earlyCutoff, available_at: earlyCutoff, data_quality: 90, evidence: { run } };
+    const { data: early, error: earlyError } = await db.from("wallet_cluster_snapshots").insert({ ...base,
+      information_cutoff_at: earlyCutoff, covered_pair_count: 0, relationship_coverage: 0,
+      confirmed_independent_count: 0, cluster_adjusted_count: null, status: "unknown" }).select("id").single();
+    expect(earlyError).toBeNull();
+    if (!early) throw new Error("Early cluster snapshot was not persisted");
+    const { error: laterError } = await db.from("wallet_cluster_snapshots").insert({ ...base,
+      information_cutoff_at: laterCutoff, observed_at: laterCutoff, available_at: laterCutoff, covered_pair_count: 1,
+      relationship_coverage: 100, confirmed_independent_count: 1, cluster_adjusted_count: 1.1, status: "available" });
+    expect(laterError).toBeNull();
+    const historical = await db.from("wallet_cluster_snapshots").select("status,cluster_adjusted_count")
+      .eq("scope_hash", `integration-${run}`).lte("available_at", earlyCutoff).order("information_cutoff_at", { ascending: false }).limit(1).single();
+    expect(historical.error).toBeNull();
+    expect(historical.data).toMatchObject({ status: "unknown", cluster_adjusted_count: null });
+    const mutation = await db.from("wallet_cluster_snapshots").update({ relationship_coverage: 100 }).eq("id", early.id);
+    expect(mutation.error?.message).toMatch(/immutable/i);
+  });
+
+  it("persists wallet clustering idempotently", async () => {
+    const { data: wallets, error } = await db.from("wallets").select("id").order("created_at").limit(2);
+    expect(error).toBeNull();
+    if (!wallets || wallets.length < 2) throw new Error("Two wallets are required for clustering integration");
+    const base = { dataQuality: 90, historyComplete: true, firstFundingAt: "2026-02-01T00:00:00.000Z",
+      funderAddress: "integration-shared-exchange", fundingSourceClassification: "exchange" as const,
+      counterparties: [], tradeTimesByAsset: {} };
+    const evaluation = evaluateWalletIndependence([
+      { ...base, walletId: wallets[0].id, firstSeenAt: "2025-01-01T00:00:00.000Z" },
+      { ...base, walletId: wallets[1].id, firstSeenAt: "2025-02-01T00:00:00.000Z" },
+    ]);
+    const repository = new WalletClusteringRepository(db);
+    const cutoff = new Date(Date.now() - 1_000).toISOString();
+    const first = await repository.save(evaluation, cutoff, "integration-provider");
+    const retry = await repository.save(evaluation, cutoff, "integration-provider");
+    expect(retry).toBe(first);
+    const { count, error: countError } = await db.from("wallet_cluster_snapshots").select("id", { count: "exact", head: true })
+      .eq("scope_hash", evaluation.scopeHash).eq("model_version", evaluation.modelVersion).eq("information_cutoff_at", cutoff);
+    expect(countError).toBeNull();
+    expect(count).toBe(1);
   });
 });

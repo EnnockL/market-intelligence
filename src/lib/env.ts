@@ -7,6 +7,7 @@ const workerSchema = z.object({
   SOLANA_DISCOVERY_SEEDS: z.string().default("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"),
   COINGECKO_API_KEY: z.string().min(1).optional(),
   BIRDEYE_API_KEY: z.string().min(1).optional(), WALLET_EVIDENCE_MAX_TOKENS: z.coerce.number().int().min(1).max(100).default(10),
+  WALLET_CLUSTERING_MAX_WALLETS: z.coerce.number().int().min(2).max(500).default(100),
 });
 
 export type WorkerEnv = z.infer<typeof workerSchema>;
