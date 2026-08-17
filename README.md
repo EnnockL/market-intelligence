@@ -35,6 +35,7 @@ npm run worker -- wallet-discovery
 npm run worker -- crypto-market
 npm run worker -- wallet-pnl
 npm run worker -- wallet-evidence
+npm run worker -- fast-flow
 ```
 
 The stock universe defaults to `AAPL,NVDA,AMD,TSLA,MSFT`. Stock quotes use Finnhub. Wallet ingestion uses Solana JSON-RPC and reads addresses where `wallets.is_tracked = true`. Each run persists status, record count, errors, and completion time in `ingestion_runs`; provider failures are retained in `provider_errors`.
@@ -86,6 +87,7 @@ The workflow serializes deployments and runs `supabase db push`; never modify th
 - `docs/MASTER-PLAN.md` — simulation, replay, paper portfolio, and delivery principles
 - `docs/MASTER-ARCHITECTURE.md` — locked agent architecture, data flow, Fast Lane, Meta, and LLM boundaries
 - `docs/DECISION-INFRASTRUCTURE-V1.md` — event/outbox delivery, opportunity revisions, evidence, and idempotency contracts
+- `docs/FAST-FLOW-V1.md` — verified convergence, hard-safety policy, and current independence limitation
 - `docs/PRODUCTION-SUBSCRIPTIONS.md` — phased vendor accounts, activation criteria and subscription budget
 - `tests` — deterministic domain tests
 
