@@ -17,17 +17,19 @@ import { GeckoTerminalProvider } from "@/services/crypto-market/geckoterminal-pr
 import { FreeCryptoMarketProvider } from "@/services/crypto-market/free-market-provider";
 import { runFastFlow } from "./fast-flow";
 import { runWalletClustering } from "./wallet-clustering";
+import { runJackpotCollector } from "./jackpot-collector";
+import { runJackpotOutcomes } from "./jackpot-outcomes";
 import { loadEnvConfig } from "@next/env";
 
 loadEnvConfig(process.cwd());
 
 async function main() {
   const job = process.argv[2];
-  if (!["stocks", "wallets", "wallet-discovery", "crypto-market", "wallet-pnl", "wallet-evidence", "wallet-clustering", "fast-flow"].includes(job)) throw new Error("Usage: npm run worker -- stocks|wallets|wallet-discovery|crypto-market|wallet-pnl|wallet-evidence|wallet-clustering|fast-flow");
+  if (!["stocks", "wallets", "wallet-discovery", "crypto-market", "wallet-pnl", "wallet-evidence", "wallet-clustering", "fast-flow", "jackpot-collector", "jackpot-outcomes"].includes(job)) throw new Error("Usage: npm run worker -- stocks|wallets|wallet-discovery|crypto-market|wallet-pnl|wallet-evidence|wallet-clustering|fast-flow|jackpot-collector|jackpot-outcomes");
   const env = getWorkerEnv();
   const db = createServiceClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
   const repository = new IngestionRepository(db);
-  const result = job === "fast-flow" ? await runFastFlow(db,repository) : job === "wallet-clustering" ? await runWalletClustering(db,repository,env.WALLET_CLUSTERING_MAX_WALLETS) : job === "stocks"
+  const result = job === "fast-flow" ? await runFastFlow(db,repository) : job === "jackpot-collector" ? await runJackpotCollector(db,repository) : job === "jackpot-outcomes" ? await runJackpotOutcomes(db,repository) : job === "wallet-clustering" ? await runWalletClustering(db,repository,env.WALLET_CLUSTERING_MAX_WALLETS) : job === "stocks"
     ? await runStockIngestion(new FinnhubProvider(env.FINNHUB_API_KEY), repository, env.STOCK_SYMBOLS.split(",").map((value) => value.trim()).filter(Boolean))
     : job === "wallets" ? await runWalletIngestion(new SolanaRpcProvider(env.SOLANA_RPC_URL), repository)
     : job === "wallet-discovery" ? await runWalletDiscovery(new SolanaRpcProvider(env.SOLANA_RPC_URL), repository, env.SOLANA_DISCOVERY_SEEDS.split(",").map((value) => value.trim()).filter(Boolean))
