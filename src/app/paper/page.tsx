@@ -57,6 +57,23 @@ export default async function PaperPage() {
             </article>
           </div>
           <div className="paper-orders">
+            {p.performance && (
+              <div className="performance-funnel">
+                <strong>Policy funnel</strong>
+                {Object.entries(p.performance.funnel).map(([step, count]) => (
+                  <span key={step}>
+                    <b>{String(count)}</b>
+                    {step}
+                  </span>
+                ))}
+                <i>
+                  Top blocker:{" "}
+                  {Object.entries(p.performance.reject_reasons).sort(
+                    (a: any, b: any) => Number(b[1]) - Number(a[1]),
+                  )[0]?.[0] ?? "None"}
+                </i>
+              </div>
+            )}
             {p.orders.length ? (
               p.orders.map((o: any) => (
                 <Link href={`/paper/trades/${o.id}`} key={o.id}>

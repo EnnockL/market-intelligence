@@ -24,6 +24,7 @@ import { runPaperEligibility } from "./paper-eligibility";
 import { runPaperExecution } from "./paper-execution";
 import { runPaperExits } from "./paper-exits";
 import { runPaperValuation } from "./paper-valuation";
+import { runPerformance } from "./performance";
 import { loadEnvConfig } from "@next/env";
 
 loadEnvConfig(process.cwd());
@@ -47,6 +48,7 @@ async function main() {
       "paper-execution",
       "paper-exits",
       "paper-valuation",
+      "performance",
     ].includes(job)
   )
     throw new Error("Unknown worker job");
@@ -57,82 +59,84 @@ async function main() {
   );
   const repository = new IngestionRepository(db);
   const result =
-    job === "paper-eligibility"
-      ? await runPaperEligibility(db, repository)
-      : job === "paper-execution"
-        ? await runPaperExecution(db, repository)
-        : job === "paper-exits"
-          ? await runPaperExits(db, repository)
-          : job === "paper-valuation"
-            ? await runPaperValuation(db, repository)
-            : job === "fast-flow"
-              ? await runFastFlow(db, repository)
-              : job === "market-events"
-                ? await runMarketEvents(db, repository)
-                : job === "jackpot-collector"
-                  ? await runJackpotCollector(db, repository)
-                  : job === "jackpot-outcomes"
-                    ? await runJackpotOutcomes(db, repository)
-                    : job === "wallet-clustering"
-                      ? await runWalletClustering(
-                          db,
-                          repository,
-                          env.WALLET_CLUSTERING_MAX_WALLETS,
-                        )
-                      : job === "stocks"
-                        ? await runStockIngestion(
-                            new FinnhubProvider(env.FINNHUB_API_KEY),
+    job === "performance"
+      ? await runPerformance(db, repository)
+      : job === "paper-eligibility"
+        ? await runPaperEligibility(db, repository)
+        : job === "paper-execution"
+          ? await runPaperExecution(db, repository)
+          : job === "paper-exits"
+            ? await runPaperExits(db, repository)
+            : job === "paper-valuation"
+              ? await runPaperValuation(db, repository)
+              : job === "fast-flow"
+                ? await runFastFlow(db, repository)
+                : job === "market-events"
+                  ? await runMarketEvents(db, repository)
+                  : job === "jackpot-collector"
+                    ? await runJackpotCollector(db, repository)
+                    : job === "jackpot-outcomes"
+                      ? await runJackpotOutcomes(db, repository)
+                      : job === "wallet-clustering"
+                        ? await runWalletClustering(
+                            db,
                             repository,
-                            env.STOCK_SYMBOLS.split(",")
-                              .map((value) => value.trim())
-                              .filter(Boolean),
+                            env.WALLET_CLUSTERING_MAX_WALLETS,
                           )
-                        : job === "wallets"
-                          ? await runWalletIngestion(
-                              new SolanaRpcProvider(env.SOLANA_RPC_URL),
+                        : job === "stocks"
+                          ? await runStockIngestion(
+                              new FinnhubProvider(env.FINNHUB_API_KEY),
                               repository,
+                              env.STOCK_SYMBOLS.split(",")
+                                .map((value) => value.trim())
+                                .filter(Boolean),
                             )
-                          : job === "wallet-discovery"
-                            ? await runWalletDiscovery(
+                          : job === "wallets"
+                            ? await runWalletIngestion(
                                 new SolanaRpcProvider(env.SOLANA_RPC_URL),
                                 repository,
-                                env.SOLANA_DISCOVERY_SEEDS.split(",")
-                                  .map((value) => value.trim())
-                                  .filter(Boolean),
                               )
-                            : job === "crypto-market"
-                              ? await runCryptoMarketIngestion(
-                                  new FreeCryptoMarketProvider(
-                                    new DexScreenerProvider(),
-                                    new GeckoTerminalProvider(),
-                                  ),
+                            : job === "wallet-discovery"
+                              ? await runWalletDiscovery(
+                                  new SolanaRpcProvider(env.SOLANA_RPC_URL),
                                   repository,
+                                  env.SOLANA_DISCOVERY_SEEDS.split(",")
+                                    .map((value) => value.trim())
+                                    .filter(Boolean),
                                 )
-                              : job === "wallet-evidence"
-                                ? env.BIRDEYE_API_KEY
-                                  ? await runWalletEvidence(
-                                      new BirdeyeHistoricalLiquidityProvider(
-                                        env.BIRDEYE_API_KEY,
-                                      ),
-                                      new BirdeyeTokenRiskProvider(
-                                        env.BIRDEYE_API_KEY,
-                                      ),
-                                      repository,
-                                      env.WALLET_EVIDENCE_MAX_TOKENS,
-                                    )
-                                  : (() => {
-                                      throw new Error(
-                                        "BIRDEYE_API_KEY is required for wallet-evidence",
-                                      );
-                                    })()
-                                : await runWalletPnl(
-                                    env.COINGECKO_API_KEY
-                                      ? new CoinGeckoHistoricalProvider(
-                                          env.COINGECKO_API_KEY,
-                                        )
-                                      : new GeckoTerminalProvider(),
+                              : job === "crypto-market"
+                                ? await runCryptoMarketIngestion(
+                                    new FreeCryptoMarketProvider(
+                                      new DexScreenerProvider(),
+                                      new GeckoTerminalProvider(),
+                                    ),
                                     repository,
-                                  );
+                                  )
+                                : job === "wallet-evidence"
+                                  ? env.BIRDEYE_API_KEY
+                                    ? await runWalletEvidence(
+                                        new BirdeyeHistoricalLiquidityProvider(
+                                          env.BIRDEYE_API_KEY,
+                                        ),
+                                        new BirdeyeTokenRiskProvider(
+                                          env.BIRDEYE_API_KEY,
+                                        ),
+                                        repository,
+                                        env.WALLET_EVIDENCE_MAX_TOKENS,
+                                      )
+                                    : (() => {
+                                        throw new Error(
+                                          "BIRDEYE_API_KEY is required for wallet-evidence",
+                                        );
+                                      })()
+                                  : await runWalletPnl(
+                                      env.COINGECKO_API_KEY
+                                        ? new CoinGeckoHistoricalProvider(
+                                            env.COINGECKO_API_KEY,
+                                          )
+                                        : new GeckoTerminalProvider(),
+                                      repository,
+                                    );
   process.stdout.write(`${JSON.stringify(result)}\n`);
 }
 
