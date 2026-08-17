@@ -84,6 +84,7 @@ The workflow serializes deployments and runs `supabase db push`; never modify th
 - `supabase/migrations` — versioned PostgreSQL schema
 - `docs/SPRINT-1.md` — scope and acceptance criteria
 - `docs/MASTER-PLAN.md` — simulation, replay, paper portfolio, and delivery principles
+- `docs/PRODUCTION-SUBSCRIPTIONS.md` — phased vendor accounts, activation criteria and subscription budget
 - `tests` — deterministic domain tests
 
 This is research software for paper evaluation, not financial advice or an execution system.
