@@ -4,8 +4,8 @@ import type { CryptoMarketDataProvider } from "@/services/crypto-market/provider
 const WRAPPED_SOL = "So11111111111111111111111111111111111111112";
 export async function runWalletPnl(provider: CryptoMarketDataProvider, repository: IngestionRepository) {
   const runId = await repository.startRun("wallet_pnl", provider.name); let enriched = 0;
-  try { const transactions = await repository.walletTransactionsForEnrichment();
-    for (const tx of transactions) {
+  try { const transactions = await repository.walletTransactionsForEnrichment(); const existing = await repository.enrichedTransactionIds(provider.name);
+    for (const tx of transactions) { if (existing.has(tx.id)) continue;
       const tokenPoint = await provider.getHistorical({ mintAddress: tx.mintAddress, timestamp: tx.occurred_at });
       const solPoint = await provider.getHistorical({ mintAddress: WRAPPED_SOL, timestamp: tx.occurred_at });
       const raw = tx.raw_payload as { meta?: { fee?: number } } | null; await repository.saveTransactionEnrichment({ transactionId: tx.id, provider: provider.name,

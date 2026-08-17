@@ -110,3 +110,11 @@ export interface TokenRiskObservation {
   id: UUID; assetId: UUID; provider: string; modelVersion: string; classification: "clear" | "watch" | "rug_confirmed" | "unknown";
   confidence: number; evidence: Json; observedAt: ISODateTime; knownAt: ISODateTime;
 }
+export interface CryptoLiquiditySnapshot {
+  id: UUID; assetId: UUID; poolAddress: string; liquidityUsd: string; provider: string; selectionVersion: string;
+  observedAt: ISODateTime; effectiveAt: ISODateTime; informationAvailableAt: ISODateTime; dataQuality: number; rawPayload: Json;
+}
+export interface WalletVerificationEvaluation {
+  id: UUID; walletId: UUID; policyVersion: string; evaluatedAt: ISODateTime; dataSnapshotCutoff: ISODateTime;
+  currentStatus: string; eligibleStatus: "candidate" | "reviewing" | "verified"; requirementsPassed: Json; requirementsFailed: Json; evidence: Json;
+}

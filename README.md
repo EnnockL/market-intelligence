@@ -53,6 +53,8 @@ Crypto current price, liquidity, market cap, and 24-hour volume use the free DEX
 
 Wallet risk metrics are deterministic and point-in-time. Max drawdown uses only verified closed trade returns. Rug exposure requires immutable token risk observations; missing assessments remain `NULL` and are never interpreted as safe. GeckoTerminal does not provide historical reserve liquidity, so current liquidity is never backfilled into historical trades.
 
+Wallet Intelligence V3 uses `wallet-verification-policy-v1`. Historical liquidity selection is `latest-effective-highest-liquidity-v1`: use the latest snapshot whose effective and information-available timestamps are not after the evaluation timestamp; ties choose highest liquidity, then lexicographically smallest pool address. Performance history is explicitly a realized-PnL curve, never presented as full wallet equity. Score V3 remains separate from evidence quality and cannot promote `elite` automatically.
+
 The dashboard falls back to labeled mock values when configuration or snapshots are missing. Provider failures display `DEGRADED`; quotes older than 15 minutes display `STALE`. Live prices do not generate opportunity scores or trading decisions.
 
 ## Database deployment
