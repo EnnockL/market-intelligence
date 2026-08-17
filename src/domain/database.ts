@@ -104,4 +104,9 @@ export interface WalletMetricSnapshot {
   informationAvailableThrough: ISODateTime; closedTrades: number; verifiedTrades: number; wins: number; losses: number;
   winRate: string | null; medianReturn: string | null; meanReturn: string | null; realizedPnlUsd: string | null;
   bestTradePercent: string | null; worstTradePercent: string | null; medianHoldingSeconds: number | null; dataQuality: number; metrics: Json;
+  maxDrawdown: string | null; rugExposureRate: string | null; rugAssessedTrades: number; riskDataQuality: number;
+}
+export interface TokenRiskObservation {
+  id: UUID; assetId: UUID; provider: string; modelVersion: string; classification: "clear" | "watch" | "rug_confirmed" | "unknown";
+  confidence: number; evidence: Json; observedAt: ISODateTime; knownAt: ISODateTime;
 }

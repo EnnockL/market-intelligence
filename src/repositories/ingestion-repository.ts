@@ -4,6 +4,7 @@ import type { NormalizedWalletTransaction, WalletDiscoveryCandidate } from "@/se
 import type { CryptoMarketPoint } from "@/services/crypto-market/provider";
 import { calculateWalletPnlMetrics, reconstructTradeCycles, POSITION_ENGINE_VERSION, type EnrichedWalletTrade, type TradeCycle } from "@/domain/wallet-pnl";
 import { calculateWalletScoreV2 } from "@/domain/wallet-scoring";
+import { calculateRugExposure, type TokenRiskClassification } from "@/domain/token-risk";
 
 const WALLET_ENRICHMENT_VERSION = "wallet-enrichment-v2";
 
@@ -97,7 +98,8 @@ export class IngestionRepository {
     if (error) throw error; const enrichmentByTx = new Map((enrichments ?? []).map((item) => [item.wallet_transaction_id, item]));
     const groups = new Map<string, typeof transactions>();
     for (const tx of transactions) { const key = `${tx.wallet_id}:${tx.asset_id}`; const values = groups.get(key) ?? []; values.push(tx); groups.set(key, values); }
-    const cyclesByWallet = new Map<string, TradeCycle[]>(); let saved = 0;
+    const cyclesByWallet = new Map<string, TradeCycle[]>();
+    const riskCyclesByWallet = new Map<string, Array<{ assetId: string; cycle: TradeCycle }>>(); let saved = 0;
     for (const [key, values] of groups) { const [walletId, assetId] = key.split(":");
       const events: EnrichedWalletTrade[] = values.map((tx) => { const enrichment = enrichmentByTx.get(tx.id); return { id: tx.id, signature: tx.transaction_hash,
         instructionIndex: tx.instruction_index, token: tx.mintAddress, side: tx.side as "buy" | "sell", quantity: Number(tx.quantity), occurredAt: tx.occurred_at,
@@ -114,15 +116,24 @@ export class IngestionRepository {
         execution_completeness: cycle.executionCompleteness, information_completeness: cycle.informationCompleteness,
         data_quality: cycle.dataQuality, transaction_ids: cycle.transactionIds }))); if (cycleError) throw cycleError; }
       saved += cycles.length; const walletCycles = cyclesByWallet.get(walletId) ?? []; walletCycles.push(...cycles); cyclesByWallet.set(walletId, walletCycles);
+      const walletRiskCycles = riskCyclesByWallet.get(walletId) ?? []; walletRiskCycles.push(...cycles.map((item) => ({ assetId, cycle: item }))); riskCyclesByWallet.set(walletId, walletRiskCycles);
     }
-    const now = new Date().toISOString(); for (const [walletId, cycles] of cyclesByWallet) { const metrics = calculateWalletPnlMetrics(cycles); const quality = cycles.length ? Math.round(cycles.reduce((sum, cycle) => sum + cycle.dataQuality, 0) / cycles.length) : 0;
+    const now = new Date().toISOString();
+    const { data: riskRows, error: riskError } = await this.db.from("token_risk_observations").select("asset_id,classification,known_at").lte("known_at", now).order("known_at", { ascending: false });
+    if (riskError) throw riskError; const latestRisk = new Map<string, TokenRiskClassification>();
+    for (const row of riskRows ?? []) if (!latestRisk.has(row.asset_id)) latestRisk.set(row.asset_id, row.classification as TokenRiskClassification);
+    for (const [walletId, cycles] of cyclesByWallet) { const metrics = calculateWalletPnlMetrics(cycles); const quality = cycles.length ? Math.round(cycles.reduce((sum, cycle) => sum + cycle.dataQuality, 0) / cycles.length) : 0;
+      const closedRiskCycles = (riskCyclesByWallet.get(walletId) ?? []).filter((item) => item.cycle.finalExitAt !== null);
+      const risk = calculateRugExposure(closedRiskCycles.map((item) => ({ assetId: item.assetId, classification: latestRisk.get(item.assetId) ?? null })));
       const { error: metricError } = await this.db.from("wallet_metric_snapshots").insert({ wallet_id: walletId, engine_version: POSITION_ENGINE_VERSION,
         scoring_version: "wallet-metrics-v2-preparation", calculated_at: now, information_available_through: now, closed_trades: metrics.closedTrades,
         verified_trades: metrics.verifiedTrades, wins: metrics.wins, losses: metrics.losses, win_rate: metrics.winRate, median_return: metrics.medianReturn,
         mean_return: metrics.meanReturn, realized_pnl_usd: metrics.realizedPnlUsd, best_trade_percent: metrics.bestTradePercent,
-        worst_trade_percent: metrics.worstTradePercent, median_holding_seconds: metrics.medianHoldingSeconds, data_quality: quality, metrics }); if (metricError) throw metricError;
+        worst_trade_percent: metrics.worstTradePercent, median_holding_seconds: metrics.medianHoldingSeconds, data_quality: quality,
+        max_drawdown: metrics.maxDrawdown, rug_exposure_rate: risk.rugExposureRate, rug_assessed_trades: risk.assessedTrades,
+        risk_data_quality: risk.coverage, metrics: { ...metrics, rugExposure: risk } }); if (metricError) throw metricError;
       const score = calculateWalletScoreV2({ closedTrades: metrics.closedTrades, verifiedTrades: metrics.verifiedTrades, winRate: metrics.winRate,
-        medianReturn: metrics.medianReturn, realizedPnlUsd: metrics.realizedPnlUsd, maxDrawdown: null, rugExposureRate: null,
+        medianReturn: metrics.medianReturn, realizedPnlUsd: metrics.realizedPnlUsd, maxDrawdown: metrics.maxDrawdown, rugExposureRate: risk.rugExposureRate,
         medianHoldingSeconds: metrics.medianHoldingSeconds, overallDataQuality: quality });
       const { error: scoreError } = await this.db.from("wallet_scores").insert({ wallet_id: walletId, score: score.score, data_quality: score.dataQuality,
         scoring_version: score.version, components: { components: score.components, missing_components: score.missingComponents, lifecycle: score.lifecycle },

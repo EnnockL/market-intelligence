@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateWalletPnlMetrics, reconstructTradeCycles, type EnrichedWalletTrade } from "../src/domain/wallet-pnl";
+import { calculateCompoundedMaxDrawdown, calculateWalletPnlMetrics, reconstructTradeCycles, type EnrichedWalletTrade } from "../src/domain/wallet-pnl";
 
 const at = (minute: number) => `2026-08-16T10:${String(minute).padStart(2, "0")}:00.000Z`;
 function trade(id: string, side: "buy" | "sell", quantity: number, price: number | null, minute: number, fee = 0): EnrichedWalletTrade {
@@ -40,5 +40,10 @@ describe("weighted-average wallet position engine", () => {
   it("aggregates verified wallet metrics", () => {
     const cycles = reconstructTradeCycles([trade("1", "buy", 1, 10, 0), trade("2", "sell", 1, 12, 1), trade("3", "buy", 1, 10, 2), trade("4", "sell", 1, 8, 3)]);
     expect(calculateWalletPnlMetrics(cycles)).toMatchObject({ closedTrades: 2, verifiedTrades: 2, wins: 1, losses: 1, winRate: 0.5, medianReturn: 0 });
+  });
+
+  it("calculates deterministic compounded peak-to-trough drawdown", () => {
+    const cycles = reconstructTradeCycles([trade("1", "buy", 1, 10, 0), trade("2", "sell", 1, 12, 1), trade("3", "buy", 1, 10, 2), trade("4", "sell", 1, 8, 3)]);
+    expect(calculateCompoundedMaxDrawdown(cycles)).toBeCloseTo(.2);
   });
 });

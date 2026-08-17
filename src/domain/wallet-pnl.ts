@@ -16,6 +16,7 @@ export interface WalletPnlMetrics {
   closedTrades: number; wins: number; losses: number; winRate: number | null; medianReturn: number | null;
   meanReturn: number | null; realizedPnlUsd: number | null; bestTradePercent: number | null;
   worstTradePercent: number | null; medianHoldingSeconds: number | null; sampleSize: number; verifiedTrades: number;
+  maxDrawdown: number | null;
 }
 
 type MutableCycle = TradeCycle & { priced: number; valid: number; executionKnown: number; informationTotal: number; total: number; costRemaining: number | null };
@@ -70,7 +71,17 @@ export function calculateWalletPnlMetrics(cycles: TradeCycle[]): WalletPnlMetric
     winRate: verified.length ? pnl.filter((value) => value > 0).length / verified.length : null,
     medianReturn: median(returns), meanReturn: returns.length ? returns.reduce((a, b) => a + b, 0) / returns.length : null,
     realizedPnlUsd: pnl.length ? pnl.reduce((a, b) => a + b, 0) : null, bestTradePercent: returns.length ? Math.max(...returns) : null,
-    worstTradePercent: returns.length ? Math.min(...returns) : null, medianHoldingSeconds: median(holds), sampleSize: closed.length, verifiedTrades: verified.length };
+    worstTradePercent: returns.length ? Math.min(...returns) : null, medianHoldingSeconds: median(holds), sampleSize: closed.length,
+    verifiedTrades: verified.length, maxDrawdown: calculateCompoundedMaxDrawdown(verified) };
+}
+
+export function calculateCompoundedMaxDrawdown(cycles: TradeCycle[]): number | null {
+  const returns = cycles.filter((cycle) => cycle.dataQuality === 100 && cycle.finalExitAt && cycle.returnPercent !== null)
+    .sort((a, b) => a.finalExitAt!.localeCompare(b.finalExitAt!)).map((cycle) => cycle.returnPercent! / 100);
+  if (!returns.length) return null;
+  let equity = 1; let peak = 1; let maximum = 0;
+  for (const tradeReturn of returns) { equity *= Math.max(0, 1 + tradeReturn); peak = Math.max(peak, equity); maximum = Math.max(maximum, peak === 0 ? 0 : (peak - equity) / peak); }
+  return maximum;
 }
 
 function emptyCycle(token: string, cycleNumber: number, firstEntryAt: string): MutableCycle { return { cycleNumber, token, status: "open", quantity: 0, investedUsd: 0, costBasisUsd: 0, averageEntryUsd: null, proceedsUsd: 0, realizedPnlUsd: 0, unrealizedPnlUsd: null, returnPercent: null, firstEntryAt, finalExitAt: null, holdingSeconds: null, pricingCompleteness: 0, transactionCompleteness: 0, executionCompleteness: 0, informationCompleteness: 0, dataQuality: 0, engineVersion: POSITION_ENGINE_VERSION, transactionIds: [], priced: 0, valid: 0, executionKnown: 0, informationTotal: 0, total: 0, costRemaining: 0 }; }

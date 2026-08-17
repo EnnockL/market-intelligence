@@ -51,6 +51,8 @@ Required server-side variables:
 
 Crypto current price, liquidity, market cap, and 24-hour volume use the free DEX Screener API. Historical transaction-time pricing defaults locally to the keyless GeckoTerminal API with explicit retry/backoff. When `COINGECKO_API_KEY` is configured, CoinGecko Pro replaces the public historical provider. Missing candles remain `incomplete`; the system never estimates verified profit from current prices.
 
+Wallet risk metrics are deterministic and point-in-time. Max drawdown uses only verified closed trade returns. Rug exposure requires immutable token risk observations; missing assessments remain `NULL` and are never interpreted as safe. GeckoTerminal does not provide historical reserve liquidity, so current liquidity is never backfilled into historical trades.
+
 The dashboard falls back to labeled mock values when configuration or snapshots are missing. Provider failures display `DEGRADED`; quotes older than 15 minutes display `STALE`. Live prices do not generate opportunity scores or trading decisions.
 
 ## Database deployment

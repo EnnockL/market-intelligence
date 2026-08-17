@@ -3,6 +3,7 @@ import { createServiceClient } from "../lib/supabase/server";
 export interface WalletDetailMetric {
   closedTrades: number; verifiedTrades: number; wins: number; losses: number; winRate: number | null;
   medianReturn: number | null; realizedPnlUsd: number | null; dataQuality: number; calculatedAt: string;
+  maxDrawdown: number | null; rugExposureRate: number | null; rugAssessedTrades: number; riskDataQuality: number;
 }
 export interface WalletDetailCycle {
   id: string; symbol: string; status: "open" | "closed" | "incomplete"; quantity: number;
@@ -37,13 +38,15 @@ export async function getWalletDetailData(address: string): Promise<WalletDetail
     let metric: WalletDetailMetric | null = null; let cycles: WalletDetailCycle[] = []; let transactions: WalletDetailTransaction[] = [];
     if (wallet) {
       const [{ data: metricRow, error: metricError }, { data: cycleRows, error: cycleError }, { data: transactionRows, error: transactionError }] = await Promise.all([
-        db.from("wallet_metric_snapshots").select("closed_trades,verified_trades,wins,losses,win_rate,median_return,realized_pnl_usd,data_quality,calculated_at").eq("wallet_id", wallet.id).order("calculated_at", { ascending: false }).limit(1).maybeSingle(),
+        db.from("wallet_metric_snapshots").select("closed_trades,verified_trades,wins,losses,win_rate,median_return,realized_pnl_usd,data_quality,calculated_at,max_drawdown,rug_exposure_rate,rug_assessed_trades,risk_data_quality").eq("wallet_id", wallet.id).order("calculated_at", { ascending: false }).limit(1).maybeSingle(),
         db.from("wallet_trade_cycles").select("id,status,quantity,invested_usd,proceeds_usd,realized_pnl_usd,return_percent,first_entry_at,final_exit_at,data_quality,pricing_completeness,execution_completeness,assets(symbol)").eq("wallet_id", wallet.id).order("first_entry_at", { ascending: false }).limit(30),
         db.from("wallet_transactions").select("id,transaction_hash,side,quantity,occurred_at,assets(symbol)").eq("wallet_id", wallet.id).order("occurred_at", { ascending: false }).limit(30),
       ]);
       if (metricError) throw metricError; if (cycleError) throw cycleError; if (transactionError) throw transactionError;
       metric = metricRow ? { closedTrades: metricRow.closed_trades, verifiedTrades: metricRow.verified_trades, wins: metricRow.wins, losses: metricRow.losses,
-        winRate: numberOrNull(metricRow.win_rate), medianReturn: numberOrNull(metricRow.median_return), realizedPnlUsd: numberOrNull(metricRow.realized_pnl_usd), dataQuality: metricRow.data_quality, calculatedAt: metricRow.calculated_at } : null;
+        winRate: numberOrNull(metricRow.win_rate), medianReturn: numberOrNull(metricRow.median_return), realizedPnlUsd: numberOrNull(metricRow.realized_pnl_usd), dataQuality: metricRow.data_quality, calculatedAt: metricRow.calculated_at,
+        maxDrawdown: numberOrNull(metricRow.max_drawdown), rugExposureRate: numberOrNull(metricRow.rug_exposure_rate),
+        rugAssessedTrades: metricRow.rug_assessed_trades, riskDataQuality: metricRow.risk_data_quality } : null;
       cycles = (cycleRows ?? []).map((row) => ({ id: row.id, symbol: relatedSymbol(row.assets), status: row.status, quantity: Number(row.quantity),
         investedUsd: numberOrNull(row.invested_usd), proceedsUsd: numberOrNull(row.proceeds_usd), realizedPnlUsd: numberOrNull(row.realized_pnl_usd),
         returnPercent: numberOrNull(row.return_percent), firstEntryAt: row.first_entry_at, finalExitAt: row.final_exit_at, dataQuality: row.data_quality,
