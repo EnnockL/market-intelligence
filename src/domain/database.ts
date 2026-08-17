@@ -52,7 +52,7 @@ export interface WatchlistItem {
 }
 
 export type IngestionStatus = "running" | "succeeded" | "failed";
-export type IngestionJobKind = "stock_quotes" | "wallet_transactions" | "wallet_discovery" | "crypto_market" | "wallet_pnl" | "wallet_evidence" | "fast_flow" | "wallet_clustering" | "jackpot_collector" | "jackpot_outcomes" | "market_events" | "paper_eligibility" | "paper_execution" | "paper_exits" | "paper_valuation" | "performance";
+export type IngestionJobKind = "stock_quotes" | "wallet_transactions" | "wallet_discovery" | "crypto_market" | "wallet_pnl" | "wallet_evidence" | "fast_flow" | "wallet_clustering" | "jackpot_collector" | "jackpot_outcomes" | "market_events" | "paper_eligibility" | "paper_execution" | "paper_exits" | "paper_valuation" | "performance" | "fx";
 
 export type WalletDiscoveryStatus = "candidate" | "reviewing" | "verified" | "rejected";
 export interface WalletDiscoveryCandidateRecord {
