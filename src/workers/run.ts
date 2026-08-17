@@ -10,6 +10,7 @@ import { runCryptoMarketIngestion } from "./crypto-market-ingestion";
 import { runWalletPnl } from "./wallet-pnl";
 import { DexScreenerProvider } from "@/services/crypto-market/dexscreener-provider";
 import { CoinGeckoHistoricalProvider } from "@/services/crypto-market/coingecko-provider";
+import { GeckoTerminalProvider } from "@/services/crypto-market/geckoterminal-provider";
 
 async function main() {
   const job = process.argv[2];
@@ -21,7 +22,7 @@ async function main() {
     : job === "wallets" ? await runWalletIngestion(new SolanaRpcProvider(env.SOLANA_RPC_URL), repository)
     : job === "wallet-discovery" ? await runWalletDiscovery(new SolanaRpcProvider(env.SOLANA_RPC_URL), repository, env.SOLANA_DISCOVERY_SEEDS.split(",").map((value) => value.trim()).filter(Boolean))
     : job === "crypto-market" ? await runCryptoMarketIngestion(new DexScreenerProvider(), repository)
-    : await runWalletPnl(env.COINGECKO_API_KEY ? new CoinGeckoHistoricalProvider(env.COINGECKO_API_KEY) : new DexScreenerProvider(), repository);
+    : await runWalletPnl(env.COINGECKO_API_KEY ? new CoinGeckoHistoricalProvider(env.COINGECKO_API_KEY) : new GeckoTerminalProvider(), repository);
   process.stdout.write(`${JSON.stringify(result)}\n`);
 }
 

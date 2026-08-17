@@ -49,7 +49,7 @@ Required server-side variables:
 - `SOLANA_DISCOVERY_SEEDS` — optional comma-separated public programs or addresses used to discover unverified candidates
 - `COINGECKO_API_KEY` — optional CoinGecko Pro key required for historical on-chain prices and verified PnL
 
-Crypto current price, liquidity, market cap, and 24-hour volume use the free DEX Screener API. Historical transaction-time pricing uses CoinGecko Onchain OHLCV when `COINGECKO_API_KEY` is configured. Without historical pricing, enrichments and trade cycles remain explicitly `incomplete`; the system never estimates verified profit from current prices.
+Crypto current price, liquidity, market cap, and 24-hour volume use the free DEX Screener API. Historical transaction-time pricing defaults locally to the keyless GeckoTerminal API with explicit retry/backoff. When `COINGECKO_API_KEY` is configured, CoinGecko Pro replaces the public historical provider. Missing candles remain `incomplete`; the system never estimates verified profit from current prices.
 
 The dashboard falls back to labeled mock values when configuration or snapshots are missing. Provider failures display `DEGRADED`; quotes older than 15 minutes display `STALE`. Live prices do not generate opportunity scores or trading decisions.
 

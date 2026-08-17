@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateWalletScore } from "../src/domain/wallet-scoring";
+import { calculateWalletScore, calculateWalletScoreV2 } from "../src/domain/wallet-scoring";
 
 describe("calculateWalletScore", () => {
   it("returns a versioned, reproducible component breakdown", () => {
@@ -23,5 +23,21 @@ describe("calculateWalletScore", () => {
     const result = calculateWalletScore({ tradeCount: 0, winRate: 0, medianReturn: 0, realizedPnl30d: 0, rugExposureRate: 0, maxDrawdown: 0, profitableMonths: 0, trackedMonths: 0 });
     expect(result.score).toBeGreaterThanOrEqual(0);
     expect(Number.isFinite(result.score)).toBe(true);
+  });
+});
+
+describe("calculateWalletScoreV2", () => {
+  it("keeps incomplete histories as candidates and reports missing components", () => {
+    const result = calculateWalletScoreV2({ closedTrades: 2, verifiedTrades: 0, winRate: null, medianReturn: null, realizedPnlUsd: null,
+      maxDrawdown: null, rugExposureRate: null, medianHoldingSeconds: null, overallDataQuality: 30 });
+    expect(result.version).toBe("wallet-v2"); expect(result.lifecycle).toBe("candidate");
+    expect(result.missingComponents).toEqual(expect.arrayContaining(["win_rate", "max_drawdown", "rug_exposure"]));
+    expect(result.score).toBeLessThan(20);
+  });
+
+  it("requires a mature complete sample before entering reviewing", () => {
+    const result = calculateWalletScoreV2({ closedTrades: 50, verifiedTrades: 40, winRate: .65, medianReturn: 18, realizedPnlUsd: 40000,
+      maxDrawdown: .12, rugExposureRate: .02, medianHoldingSeconds: 3600, overallDataQuality: 92 });
+    expect(result.lifecycle).toBe("reviewing"); expect(result.missingComponents).toEqual([]);
   });
 });

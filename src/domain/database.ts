@@ -87,6 +87,7 @@ export interface WalletTransactionEnrichment {
   estimatedValueUsd: string | null; feeUsd: string | null; priorityFeeUsd: string | null;
   liquidityUsd: string | null; marketCapUsd: string | null; priceTimestamp: ISODateTime | null;
   knownAt: ISODateTime; pricingCompleteness: number; executionCompleteness: number; rawPayload: Json;
+  informationCompleteness: number; priorityFeeStatus: string;
 }
 export interface WalletTradeCycleRecord {
   id: UUID; walletId: UUID; assetId: UUID; cycleNumber: number; engineVersion: string;
@@ -95,6 +96,7 @@ export interface WalletTradeCycleRecord {
   realizedPnlUsd: string | null; unrealizedPnlUsd: string | null; returnPercent: string | null;
   firstEntryAt: ISODateTime; finalExitAt: ISODateTime | null; holdingSeconds: number | null;
   pricingCompleteness: number; transactionCompleteness: number; executionCompleteness: number; dataQuality: number;
+  informationCompleteness: number;
   walletScoreAtEntry: number | null; scoringVersionAtEntry: string | null; tokenRiskScoreAtEntry: number | null; entryContext: Json;
 }
 export interface WalletMetricSnapshot {

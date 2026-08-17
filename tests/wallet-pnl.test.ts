@@ -4,7 +4,7 @@ import { calculateWalletPnlMetrics, reconstructTradeCycles, type EnrichedWalletT
 const at = (minute: number) => `2026-08-16T10:${String(minute).padStart(2, "0")}:00.000Z`;
 function trade(id: string, side: "buy" | "sell", quantity: number, price: number | null, minute: number, fee = 0): EnrichedWalletTrade {
   return { id, signature: `sig-${id}`, instructionIndex: 0, token: "TOKEN", side, quantity, occurredAt: at(minute),
-    tokenPriceUsd: price, feeUsd: price === null ? null : fee, pricingComplete: price !== null, executionComplete: price !== null };
+    tokenPriceUsd: price, feeUsd: price === null ? null : fee, pricingComplete: price !== null, executionComplete: price !== null, informationCompleteness: price === null ? 0 : 100 };
 }
 
 describe("weighted-average wallet position engine", () => {
