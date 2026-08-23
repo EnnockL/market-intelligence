@@ -66,7 +66,7 @@ export class AgentPerformanceService {
           .map((overlap: any) => overlap.overlap_level as "LOW" | "MEDIUM" | "HIGH");
         const assetClass = assetKind(snapshot.assets);
         const bucket = qualityBucket(numberOrNull(opinion.data_quality));
-        const marketRegime = "UNKNOWN";
+        const marketRegime = await this.marketRegime(assetClass, snapshot.cutoff_at);
         const key = [opinion.agent_id, opinion.agent_version, assetClass, snapshot.horizon, marketRegime, bucket].join("|");
         const group: Group = groups.get(key) ?? {
           agentId: opinion.agent_id,
@@ -177,6 +177,14 @@ export class AgentPerformanceService {
     // market_prices lacks an ingestion/available timestamp. Using it here would
     // allow later backfills to alter historical agent performance.
     return null;
+  }
+
+  private async marketRegime(assetClass: string, cutoff: string) {
+    const scope = assetClass === "crypto" ? "CRYPTO" : assetClass === "stock" ? "STOCK" : null;
+    if (!scope) return "UNKNOWN";
+    const { data, error } = await this.db.from("market_regime_snapshots").select("regime").eq("scope", scope).lte("information_cutoff_at", cutoff).lte("available_at", cutoff).order("information_cutoff_at", { ascending: false }).limit(1).maybeSingle();
+    if (error) throw error;
+    return data?.regime ?? "UNKNOWN";
   }
 }
 

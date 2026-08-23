@@ -5,12 +5,15 @@ export const dynamic = "force-dynamic";
 
 export default async function AgentsPage() {
   const db = createServiceClient();
-  const [{ data: analyses }, { data: performance }] = await Promise.all([
+  const now = new Date().toISOString();
+  const [{ data: analyses }, { data: performance }, { data: regimes }] = await Promise.all([
     db.from("specialist_analyses").select("*,assets(symbol),specialist_analysis_components(*)").order("created_at", { ascending: false }).limit(100),
     db.from("agent_performance_snapshots").select("*").order("created_at", { ascending: false }).limit(30),
+    db.from("market_regime_snapshots").select("*").lte("available_at", now).order("created_at", { ascending: false }).limit(2),
   ]);
   return <main className={styles.page}>
     <section className={styles.hero}><small>DETERMINISTIC SPECIALISTS</small><h1>Agent Center</h1><p>Point-in-time specialist analyses with explicit evidence and knowledge traces. No autonomous execution.</p></section>
+    <section className={styles.panel} style={{ marginBottom: 24 }}><small>MARKET REGIME</small><div className={styles.grid}>{(regimes ?? []).map((item: any) => <article className={styles.card} key={item.id}><small>{item.scope} · {item.policy_version}</small><h3>{item.regime}</h3><p>{item.reason ?? "Deterministic breadth confirmed"} · coverage {Number(item.coverage_pct).toFixed(0)}%</p></article>)}{!regimes?.length && <p>Market regime has not been observed yet.</p>}</div></section>
     <section className={styles.panel} style={{ marginBottom: 24 }}><small>MEASURED CONTRIBUTION</small><div className={styles.grid}>
       {(performance ?? []).map((item: any) => <article className={styles.card} key={item.id}>
         <small>{item.agent_id} · {item.horizon} · {item.market_regime}</small>
