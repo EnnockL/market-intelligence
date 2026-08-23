@@ -12,7 +12,7 @@ import type { TokenRiskAssessment } from "@/services/token-risk/provider";
 
 const WALLET_ENRICHMENT_VERSION = "wallet-enrichment-v2";
 
-export type JobKind = "stock_quotes" | "wallet_transactions" | "wallet_discovery" | "crypto_market" | "wallet_pnl" | "wallet_evidence" | "fast_flow" | "wallet_clustering" | "jackpot_collector" | "jackpot_outcomes" | "market_events" | "paper_eligibility" | "paper_execution" | "paper_exits" | "paper_valuation" | "performance" | "fx" | "qualification" | "data_gap_closure" | "simulation" | "historical_replay" | "forecast_catalyst" | "expert_knowledge" | "baseline_forecast" | "forecast_performance" | "forecast_scheduler" | "forecast_outcomes" | "specialist_agents" | "news_ingestion" | "catalyst_classification" | "consensus" | "agent_performance" | "market_regime";
+export type JobKind = "stock_quotes" | "wallet_transactions" | "wallet_discovery" | "crypto_market" | "wallet_pnl" | "wallet_evidence" | "fast_flow" | "wallet_clustering" | "jackpot_collector" | "jackpot_outcomes" | "market_events" | "paper_eligibility" | "paper_execution" | "paper_exits" | "paper_valuation" | "performance" | "fx" | "qualification" | "data_gap_closure" | "simulation" | "historical_replay" | "forecast_catalyst" | "expert_knowledge" | "baseline_forecast" | "forecast_performance" | "forecast_scheduler" | "forecast_outcomes" | "specialist_agents" | "news_ingestion" | "catalyst_classification" | "consensus" | "agent_performance" | "market_regime" | "meta_agent";
 
 export class IngestionRepository {
   constructor(private readonly db: SupabaseClient) {}
