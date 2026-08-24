@@ -9,7 +9,7 @@ export function StockRadarPanel({ stocks }: { stocks: StockRadarItem[] }) {
 }
 
 export function RecentSignalsPanel({ signals }: { signals: RecentSignal[] }) {
-  return <section className="radar-panel"><PanelTitle kicker="LIVE FEED" title="Recent Signals" /><div className="signal-list">{signals.map((item) => <div key={item.id}><time>{item.occurredAt}</time><strong>{item.symbol}</strong><span>{item.label}</span><b className={item.scoreImpact >= 0 ? "positive" : "negative"}>{item.scoreImpact >= 0 ? "+" : ""}{item.scoreImpact}</b></div>)}</div></section>;
+  return <section className="radar-panel"><PanelTitle kicker="DATABASE FEED" title="Recent Signals" /><div className="signal-list">{signals.length ? signals.map((item) => <div key={item.id}><time>{item.occurredAt}</time><strong>{item.symbol}</strong><span>{item.label}</span><b className={item.scoreImpact === null ? "neutral" : item.scoreImpact >= 0 ? "positive" : "negative"}>{item.scoreImpact === null ? "—" : `${item.scoreImpact >= 0 ? "+" : ""}${item.scoreImpact}`}</b></div>) : <div><span>No persisted signals yet</span></div>}</div></section>;
 }
 
 export function WatchlistPanel({ assets }: { assets: WatchlistAsset[] }) {
@@ -19,4 +19,3 @@ export function WatchlistPanel({ assets }: { assets: WatchlistAsset[] }) {
 function PanelTitle({ kicker, title }: { kicker: string; title: string }) {
   return <div className="panel-title"><div><span className="eyebrow">{kicker}</span><h2>{title}</h2></div><button aria-label={`Open ${title}`}>→</button></div>;
 }
-

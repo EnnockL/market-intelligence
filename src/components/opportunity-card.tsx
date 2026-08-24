@@ -11,6 +11,7 @@ export function OpportunityCard({ opportunity, rank }: { opportunity: Opportunit
         <div className="asset-heading">
           <div><strong>{opportunity.symbol}</strong><span>{opportunity.name}</span></div>
           <span className={`tag tag--${opportunity.kind}`}>{opportunity.kind}</span>
+          {opportunity.dataMode && <span className={`source-badge source-badge--${opportunity.dataMode}`}>{opportunity.dataMode}</span>}
         </div>
         <p>{opportunity.summary}</p>
         <div className="factor-list">
@@ -18,11 +19,10 @@ export function OpportunityCard({ opportunity, rank }: { opportunity: Opportunit
         </div>
       </div>
       <div className="price-block">
-        <strong>${opportunity.price < 1 ? opportunity.price.toFixed(5) : opportunity.price.toFixed(2)}</strong>
-        <span className={opportunity.change24h >= 0 ? "positive" : "negative"}>{opportunity.change24h >= 0 ? "+" : ""}{opportunity.change24h}%</span>
+        <strong>{opportunity.price === null ? "UNKNOWN" : `$${opportunity.price < 1 ? opportunity.price.toFixed(5) : opportunity.price.toFixed(2)}`}</strong>
+        <span className={opportunity.change24h === null ? "neutral" : opportunity.change24h >= 0 ? "positive" : "negative"}>{opportunity.change24h === null ? "NO 24H DATA" : `${opportunity.change24h >= 0 ? "+" : ""}${opportunity.change24h}%`}</span>
       </div>
       <ScoreRing score={opportunity.opportunityScore} />
     </Link>
   );
 }
-

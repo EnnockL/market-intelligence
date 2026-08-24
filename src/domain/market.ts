@@ -14,9 +14,10 @@ export interface Opportunity {
   summary: string;
   factors: string[];
   negativeFactors: number;
-  price: number;
-  change24h: number;
+  price: number | null;
+  change24h: number | null;
   updatedAt: string;
+  dataMode?: "live" | "stale" | "mock" | "unknown";
 }
 
 export interface MarketPulse {
@@ -24,6 +25,7 @@ export interface MarketPulse {
   value: string;
   change: string;
   tone: "positive" | "negative" | "neutral";
+  dataMode?: "live" | "stale" | "unknown";
 }
 
 export interface SmartMoneyCluster {
@@ -36,7 +38,7 @@ export interface StockRadarItem {
 }
 
 export interface RecentSignal {
-  id: string; symbol: string; label: string; scoreImpact: number; occurredAt: string;
+  id: string; symbol: string; label: string; scoreImpact: number | null; occurredAt: string;
 }
 
 export interface WatchlistAsset {

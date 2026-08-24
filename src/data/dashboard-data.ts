@@ -1,5 +1,4 @@
 import { createClient } from "@supabase/supabase-js";
-import { stockRadar as mockStocks } from "./mock-market";
 import type { StockRadarItem } from "@/domain/market";
 
 export type DataMode = "live" | "stale" | "degraded" | "mock";
@@ -29,5 +28,4 @@ export async function getDashboardStockData(): Promise<DashboardStockData> {
   }
 }
 
-function fallback(message: string, mode: DataMode = "mock"): DashboardStockData { return { mode, updatedAt: null, stocks: mockStocks, message }; }
-
+function fallback(message: string, mode: DataMode = "mock"): DashboardStockData { return { mode, updatedAt: null, stocks: [], message }; }
