@@ -13,7 +13,8 @@
     "worker": "tsx src/workers/run.ts",
     "scheduler:once": "tsx src/workers/run.ts forecast-scheduler",
     "scheduler:local": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-local-ingestion.ps1",
-    "strategy:lab": "tsx src/workers/run.ts strategy-pattern-lab"
+    "strategy:lab": "tsx src/workers/run.ts strategy-pattern-lab",
+    "candles:sync": "tsx src/workers/run.ts candle-ingestion"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.1",

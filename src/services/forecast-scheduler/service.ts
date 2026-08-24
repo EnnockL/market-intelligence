@@ -23,6 +23,7 @@ import { runCryptoMarketIngestion } from "@/workers/crypto-market-ingestion";
 import { runMarketEvents } from "@/workers/market-events";
 import { runFastFlow } from "@/workers/fast-flow";
 import { runJackpotCollector } from "@/workers/jackpot-collector";
+import { runCandleIngestion } from "@/workers/candle-ingestion";
 
 export interface SchedulerNewsConfig { provider: NewsProvider; symbols: string[] }
 export interface SchedulerIngestionConfig { stockProvider: MarketDataProvider; blockchainProvider: BlockchainDataProvider; cryptoProvider: CryptoMarketDataProvider; stockSymbols: string[]; discoverySeeds: string[] }
@@ -90,6 +91,7 @@ export class ForecastSchedulerService {
     if (job.job_type === "MARKET_EVENTS") return runMarketEvents(this.db, repo);
     if (job.job_type === "FAST_FLOW") return runFastFlow(this.db, repo);
     if (job.job_type === "JACKPOT_COLLECTOR") return runJackpotCollector(this.db, repo);
+    if (job.job_type === "CANDLE_INGESTION") { if (!process.env.FINNHUB_API_KEY) throw new Error("FINNHUB_API_KEY_REQUIRED"); return runCandleIngestion(this.db, process.env.FINNHUB_API_KEY); }
     if (job.job_type === "BASELINE_FORECAST") return new BaselineForecastService(this.db).run(now);
     if (job.job_type === "FORECAST_OUTCOME") {
       const limit = Math.max(1, Math.min(100, Number(job.rate_limit_budget?.batchSize ?? 25)));

@@ -4,13 +4,15 @@ import styles from "./strategy-lab.module.css";
 export const dynamic = "force-dynamic";
 export default async function StrategyLabPage() {
   const db = createServiceClient();
-  const [{ data: runs }, { data: definitions }] = await Promise.all([
+  const [{ data: runs }, { data: definitions }, { data: sources }] = await Promise.all([
     db.from("strategy_evaluation_runs").select("*,assets(symbol),strategy_definitions(name,strategy_key,version,timeframe)").order("created_at", { ascending: false }).limit(30),
     db.from("strategy_definitions").select("*").order("created_at", { ascending: false }).limit(20),
+    db.from("candle_sources").select("*,assets(symbol)").order("updated_at", { ascending: false }).limit(20),
   ]);
   return <main className={styles.page}>
     <section className={styles.hero}><p>DETERMINISTIC RESEARCH</p><h1>Strategy Pattern Lab</h1><span>Versionerade setups, point-in-time candles och reproducerbar performance. Inga live-order.</span></section>
     <section className={styles.summary}><Metric label="Strategies" value={String(definitions?.length ?? 0)}/><Metric label="Evaluation runs" value={String(runs?.length ?? 0)}/><Metric label="Execution" value="DISABLED"/></section>
+    <section className={styles.panel}><header><div><p>HISTORICAL DATA</p><h2>Candle providers</h2></div><span>Point-in-time OHLCV ingestion</span></header>{sources?.length ? <div className={styles.grid}>{sources.map((source: any) => <article key={source.id}><small>{asset(source.assets)} · {source.timeframe} · {source.provider}</small><h3>{source.status}</h3><footer>{source.last_successful_sync ? `Synced ${new Date(source.last_successful_sync).toLocaleString("sv-SE")}` : "Never synced"}{source.last_error ? ` · ${source.last_error}` : ""}</footer></article>)}</div> : <div className={styles.empty}><strong>NO SOURCES</strong><span>Ingen candle-provider är konfigurerad.</span></div>}</section>
     <section className={styles.panel}><header><div><p>IMMUTABLE RESULTS</p><h2>Historical evaluations</h2></div><span>Minsta sample size styr om procenttal visas</span></header>
       {runs?.length ? <div className={styles.grid}>{runs.map((run: any) => <article key={run.id}><small>{asset(run.assets)} · {run.strategy_definitions?.timeframe} · v{run.strategy_definitions?.version}</small><h3>{run.strategy_definitions?.name}</h3><div className={styles.metrics}><Metric label="Status" value={run.status}/><Metric label="Samples" value={`${run.sample_size}/${run.minimum_sample_size}`}/><Metric label="Win rate" value={metric(run.metrics?.winRate, "%")}/><Metric label="Profit factor" value={metric(run.metrics?.profitFactor)}/><Metric label="Average R" value={metric(run.metrics?.averageR)}/><Metric label="Max DD (R)" value={metric(run.metrics?.maxDrawdownR)}/></div><footer>Cutoff {new Date(run.information_cutoff_at).toLocaleString("sv-SE")} · candles {run.candle_count} · trades {run.trade_count}</footer></article>)}</div> : <div className={styles.empty}><strong>INSUFFICIENT DATA</strong><span>Inga historiska candle-dataset har utvärderats ännu. Systemet visar inte påhittade resultat.</span></div>}
     </section>

@@ -1,4 +1,4 @@
-export type AssetKind = "stock" | "crypto";
+export type AssetKind = "stock" | "crypto" | "forex";
 export type SignalDirection = "bullish" | "bearish" | "neutral";
 export type RiskLevel = "low" | "medium" | "high" | "extreme";
 

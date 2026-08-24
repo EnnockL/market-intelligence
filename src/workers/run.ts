@@ -45,6 +45,7 @@ import { runMarketRegime } from "./market-regime";
 import { runMetaAgent } from "./meta-agent";
 import { runMetaReadiness } from "./meta-readiness";
 import { runStrategyPatternLab } from "./strategy-pattern-lab";
+import { runCandleIngestion } from "./candle-ingestion";
 import { loadEnvConfig } from "@next/env";
 
 loadEnvConfig(process.cwd());
@@ -88,6 +89,7 @@ async function main() {
       "meta-agent",
       "meta-readiness",
       "strategy-pattern-lab",
+      "candle-ingestion",
     ].includes(job)
   )
     throw new Error("Unknown worker job");
@@ -107,7 +109,7 @@ async function main() {
     discoverySeeds,
   };
   const result =
-    job === "strategy-pattern-lab" ? await runStrategyPatternLab(db) : job === "meta-readiness" ? await runMetaReadiness(db,repository) : job === "meta-agent" ? await runMetaAgent(db,repository) : job === "market-regime" ? await runMarketRegime(db,repository) : job === "agent-performance" ? await runAgentPerformance(db,repository) : job === "consensus" ? await runConsensus(db,repository) : job === "catalyst-classification" ? await runCatalystClassification(db,repository) : job === "news-ingestion" ? await runNewsIngestion(db,repository,new FinnhubNewsProvider(env.FINNHUB_API_KEY),stockSymbols) : job === "specialist-agents" ? await runSpecialistAgents(db, repository) : job === "forecast-scheduler" ? await runForecastScheduler(db, repository,{provider:new FinnhubNewsProvider(env.FINNHUB_API_KEY),symbols:stockSymbols},schedulerIngestion) : job === "forecast-performance" ? await runForecastPerformance(db, repository) : job === "baseline-forecast" ? await runBaselineForecast(db, repository) : job === "expert-knowledge" ? await runExpertKnowledge(db, repository) : job === "forecast-catalyst" ? await runForecastCatalyst(db, repository) : job === "historical-replay" ? await runHistoricalReplay(db, repository) : job === "simulation" ? await runSimulation(db, repository) : job === "data-gap-closure"
+    job === "candle-ingestion" ? await runCandleIngestion(db,env.FINNHUB_API_KEY) : job === "strategy-pattern-lab" ? await runStrategyPatternLab(db) : job === "meta-readiness" ? await runMetaReadiness(db,repository) : job === "meta-agent" ? await runMetaAgent(db,repository) : job === "market-regime" ? await runMarketRegime(db,repository) : job === "agent-performance" ? await runAgentPerformance(db,repository) : job === "consensus" ? await runConsensus(db,repository) : job === "catalyst-classification" ? await runCatalystClassification(db,repository) : job === "news-ingestion" ? await runNewsIngestion(db,repository,new FinnhubNewsProvider(env.FINNHUB_API_KEY),stockSymbols) : job === "specialist-agents" ? await runSpecialistAgents(db, repository) : job === "forecast-scheduler" ? await runForecastScheduler(db, repository,{provider:new FinnhubNewsProvider(env.FINNHUB_API_KEY),symbols:stockSymbols},schedulerIngestion) : job === "forecast-performance" ? await runForecastPerformance(db, repository) : job === "baseline-forecast" ? await runBaselineForecast(db, repository) : job === "expert-knowledge" ? await runExpertKnowledge(db, repository) : job === "forecast-catalyst" ? await runForecastCatalyst(db, repository) : job === "historical-replay" ? await runHistoricalReplay(db, repository) : job === "simulation" ? await runSimulation(db, repository) : job === "data-gap-closure"
       ? env.BIRDEYE_API_KEY
         ? await runDataGapClosure(db, repository, new BirdeyeHistoricalLiquidityProvider(env.BIRDEYE_API_KEY), new BirdeyeTokenRiskProvider(env.BIRDEYE_API_KEY), env.WALLET_EVIDENCE_MAX_TOKENS)
         : (()=>{throw new Error("BIRDEYE_API_KEY is required for data-gap-closure")})()
