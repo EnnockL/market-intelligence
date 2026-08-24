@@ -78,7 +78,7 @@ Wallet history ingestion maintains a per-wallet `before` cursor, deterministic n
 
 Wallet Intelligence V3 uses `wallet-verification-policy-v1`. Historical liquidity selection is `latest-effective-highest-liquidity-v1`: use the latest snapshot whose effective and information-available timestamps are not after the evaluation timestamp; ties choose highest liquidity, then lexicographically smallest pool address. Performance history is explicitly a realized-PnL curve, never presented as full wallet equity. Score V3 remains separate from evidence quality and cannot promote `elite` automatically.
 
-The dashboard falls back to labeled mock values when configuration or snapshots are missing. Provider failures display `DEGRADED`; quotes older than 15 minutes display `STALE`. Live prices do not generate opportunity scores or trading decisions.
+The main radar shows persisted records only. Missing data remains empty or `UNKNOWN`; provider failures display `DEGRADED`, and quotes older than 15 minutes display `STALE`. Live prices do not generate opportunity scores or trading decisions.
 
 ## Database deployment
 
