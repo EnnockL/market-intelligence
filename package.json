@@ -10,7 +10,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "worker": "tsx src/workers/run.ts"
+    "worker": "tsx src/workers/run.ts",
+    "scheduler:once": "tsx src/workers/run.ts forecast-scheduler",
+    "scheduler:local": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-local-ingestion.ps1"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.1",
