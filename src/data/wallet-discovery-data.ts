@@ -1,5 +1,6 @@
 import { createServiceClient } from "../lib/supabase/server";
 import type { DataMode } from "./dashboard-data";
+import { dataModeAt } from "./data-truth";
 
 export interface DashboardWalletCandidate {
   address: string; status: "candidate" | "reviewing" | "verified" | "rejected";
@@ -33,9 +34,9 @@ export async function getWalletDiscoveryData(): Promise<DashboardWalletDiscovery
       .neq("status", "rejected").order("score", { ascending: false }).order("data_quality", { ascending: false }).limit(8);
     if (error) throw error;
     const candidates = (data ?? []).map((row) => mapWalletCandidate(row as CandidateRow));
-    if (!candidates.length) return { mode: "live", updatedAt: null, candidates: [], message: "Discovery is live; no candidates found yet" };
+    if (!candidates.length) return { mode: "unavailable", updatedAt: null, candidates: [], message: "No persisted wallet candidates yet" };
     const updatedAt = candidates.map((item) => item.lastObservedAt).sort().at(-1) ?? null;
-    return { mode: "live", updatedAt, candidates, message: `${candidates.length} unverified candidates from Solana RPC` };
+    return { mode: dataModeAt(updatedAt), updatedAt, candidates, message: `${candidates.length} unverified candidates from Helius/Solana` };
   } catch (error) {
     return unavailable(`Wallet discovery unavailable: ${error instanceof Error ? error.message : "unknown error"}`);
   }
