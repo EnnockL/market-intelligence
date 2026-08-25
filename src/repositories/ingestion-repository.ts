@@ -23,6 +23,29 @@ export class IngestionRepository {
     return (data ?? []) as Array<{ id: string; address: string; metadata: { last_signature?: string; backfill_before?: string; backfill_complete?: boolean } | null }>;
   }
 
+  async walletDiscoverySeeds(configuredSeeds: string[], limit = 10) {
+    const bounded = Math.max(1, Math.min(limit, 25));
+    const unique = new Set(configuredSeeds.map((value) => value.trim()).filter(Boolean));
+    const { data: tracked, error: trackedError } = await this.db
+      .from("wallets")
+      .select("address")
+      .eq("is_tracked", true)
+      .order("first_seen_at", { ascending: true })
+      .limit(bounded);
+    if (trackedError) throw trackedError;
+    for (const row of tracked ?? []) unique.add(row.address);
+    const { data: candidates, error: candidateError } = await this.db
+      .from("wallet_discovery_candidates")
+      .select("address")
+      .in("status", ["tracked", "reviewing", "verified"])
+      .order("score", { ascending: false })
+      .order("data_quality", { ascending: false })
+      .limit(bounded);
+    if (candidateError) throw candidateError;
+    for (const row of candidates ?? []) unique.add(row.address);
+    return [...unique].slice(0, bounded);
+  }
+
   async saveStockQuotes(quotes: StockQuote[]) {
     for (const quote of quotes) {
       const { data: asset, error: assetError } = await this.db.from("assets").upsert({ kind: "stock", symbol: quote.symbol, name: quote.symbol }, { onConflict: "kind,symbol" }).select("id").single();

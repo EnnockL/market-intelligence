@@ -1,24 +1,28 @@
 import { deterministicDigest } from "@/domain/events";
 
-export const DATA_GAP_CLOSURE_VERSION = "candidate-data-gap-closure-v1";
+export const DATA_GAP_CLOSURE_VERSION = "candidate-data-gap-closure-v2";
 export type GapStatus = "CLOSED" | "PARTIAL" | "UNKNOWN" | "UNAVAILABLE" | "FAILED";
 export interface GapEvidence { id: string; type: string; availableAt: string; source: string; dataQuality: number | null }
 export interface GapClosureInput {
   candidateId: string; candidateRevision: number; cutoff: string; previousFeatures: Record<string, unknown>;
   liquidity: { value: number; evidence: GapEvidence } | null;
   risk: { status: string; coverage: number; evidence: GapEvidence } | null;
-  verifiedWalletCount: number | null; tokenAgeSeconds: number | null;
+  wallet: { rawWalletCount: number | null; verifiedWalletCount: number | null; confirmedIndependent: number | null; relationshipCoverage: number | null; clusterAdjustedCount: number | null; convergenceWindowMs: number | null; evidence: GapEvidence[] };
+  tokenAgeSeconds: number | null;
   priceAcceleration: GapEvidence | null; volumeAcceleration: GapEvidence | null;
 }
 export function buildGapClosure(input: GapClosureInput) {
-  const features: Record<string, unknown> = { ...input.previousFeatures, liquidity: input.liquidity?.value ?? nullable(input.previousFeatures.liquidity), verifiedWalletCount: input.verifiedWalletCount, tokenAgeSeconds: input.tokenAgeSeconds, riskStatus: input.risk?.status ?? input.previousFeatures.riskStatus ?? "UNKNOWN" };
-  const evidence = [input.liquidity?.evidence, input.risk?.evidence, input.priceAcceleration, input.volumeAcceleration].filter(Boolean) as GapEvidence[];
+  const features: Record<string, unknown> = { ...input.previousFeatures, liquidity: input.liquidity?.value ?? nullable(input.previousFeatures.liquidity), rawWalletCount: input.wallet.rawWalletCount, verifiedWalletCount: input.wallet.verifiedWalletCount, confirmedIndependent: input.wallet.confirmedIndependent, relationshipCoverage: input.wallet.relationshipCoverage, clusterAdjustedCount: input.wallet.clusterAdjustedCount, convergenceWindowMs: input.wallet.convergenceWindowMs, tokenAgeSeconds: input.tokenAgeSeconds, riskStatus: input.risk?.status ?? input.previousFeatures.riskStatus ?? "UNKNOWN" };
+  const evidence = [...input.wallet.evidence, input.liquidity?.evidence, input.risk?.evidence, input.priceAcceleration, input.volumeAcceleration].filter(Boolean) as GapEvidence[];
   for (const item of evidence) if (Date.parse(item.availableAt) > Date.parse(input.cutoff)) throw new Error(`FUTURE_EVIDENCE_REJECTED:${item.id}`);
   const qualities = evidence.map(x=>x.dataQuality).filter((x):x is number=>x!==null);
   if (qualities.length) features.dataQuality = Math.round(qualities.reduce((a,b)=>a+b,0)/qualities.length);
   const gaps = {
     safety: input.risk ? "CLOSED" : "UNKNOWN", liquidity: input.liquidity ? "CLOSED" : "UNKNOWN",
-    verified_wallet_quality: input.verifiedWalletCount === null ? "UNKNOWN" : "CLOSED",
+    wallet_convergence: input.wallet.rawWalletCount === null ? "UNKNOWN" : "CLOSED",
+    wallet_independence: input.wallet.confirmedIndependent === null ? "UNKNOWN" : "CLOSED",
+    relationship_coverage: input.wallet.relationshipCoverage === null ? "UNKNOWN" : input.wallet.relationshipCoverage >= 80 ? "CLOSED" : "PARTIAL",
+    verified_wallet_quality: input.wallet.verifiedWalletCount === null ? "UNKNOWN" : "CLOSED",
     token_risk_coverage: input.risk ? input.risk.coverage >= 80 ? "CLOSED" : "PARTIAL" : "UNKNOWN",
     price_acceleration: input.priceAcceleration ? "CLOSED" : "UNKNOWN",
     volume_acceleration: input.volumeAcceleration ? "CLOSED" : "UNKNOWN",

@@ -23,9 +23,10 @@ export class SolanaRpcProvider implements BlockchainDataProvider {
   }
 
   async discoverWalletCandidates(seedAddresses: string[]): Promise<WalletDiscoveryCandidate[]> {
-    const excluded = new Set(seedAddresses);
+    const boundedSeeds = [...new Set(seedAddresses)].slice(0, 10);
+    const excluded = new Set(boundedSeeds);
     const sources = new Map<string, Set<string>>();
-    for (const seed of seedAddresses) {
+    for (const seed of boundedSeeds) {
       const signatures = await this.rpc<Array<{ signature: string }>>("getSignaturesForAddress", [seed, { limit: 10 }]);
       for (const item of signatures.value) {
         const transaction = await this.rpc<unknown>("getTransaction", [item.signature, { encoding: "jsonParsed", maxSupportedTransactionVersion: 0 }]);
@@ -36,7 +37,7 @@ export class SolanaRpcProvider implements BlockchainDataProvider {
       }
     }
     const candidates: WalletDiscoveryCandidate[] = [];
-    for (const [address, sourceSet] of [...sources.entries()].slice(0, 5)) {
+    for (const [address, sourceSet] of [...sources.entries()].sort(([a], [b]) => a.localeCompare(b)).slice(0, 20)) {
       const history = await this.rpc<Array<{ blockTime: number | null; err: unknown }>>("getSignaturesForAddress", [address, { limit: 20 }]);
       const times = history.value.flatMap((item) => item.blockTime === null ? [] : [item.blockTime]);
       const activeDays = times.length > 1 ? (Math.max(...times) - Math.min(...times)) / 86_400 : 0;

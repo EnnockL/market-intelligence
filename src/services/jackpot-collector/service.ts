@@ -6,6 +6,7 @@ import {
   JACKPOT_COLLECTOR_VERSION,
   nextJackpotState,
 } from "@/domain/jackpot-candidate";
+import { loadCandidateWalletMetrics } from "@/services/wallet-intelligence/candidate-wallet-evidence";
 export class JackpotCollectorService {
   constructor(private db: SupabaseClient) {}
   async handle(event: EventEnvelope) {
@@ -38,7 +39,7 @@ export class JackpotCollectorService {
     if (error) throw error;
     if (candidate && Date.parse(cutoff) < Date.parse(candidate.detected_at))
       return { status: "out_of_order" as const, candidateId: candidate.id };
-    const features = await this.features(event.assetId, cutoff, event);
+    const { features, evidence } = await this.features(event.assetId, windowStart, cutoff, event);
     const safety =
       features.riskStatus === "CONFIRMED_RUG" ||
       features.riskStatus === "HIGH_RISK"
@@ -118,6 +119,7 @@ export class JackpotCollectorService {
           tokenAgeSeconds: features.tokenAgeSeconds,
         },
         safety_result: { status: safety, riskStatus: features.riskStatus },
+        evidence_refs: evidence,
         revision_hash: hash,
       });
     if (saved.error) throw saved.error;
@@ -130,10 +132,11 @@ export class JackpotCollectorService {
   }
   private async features(
     assetId: string,
+    windowStart: string,
     cutoff: string,
     event: EventEnvelope,
   ) {
-    const [{ data: market }, { data: risk }, { data: snapshot }] =
+    const [{ data: market }, { data: risk }, wallet] =
       await Promise.all([
         this.db
           .from("crypto_market_observations")
@@ -151,44 +154,32 @@ export class JackpotCollectorService {
           .order("information_available_at", { ascending: false })
           .limit(1)
           .maybeSingle(),
-        this.db
-          .from("wallet_cluster_snapshots")
-          .select("*")
-          .lte("available_at", cutoff)
-          .order("available_at", { ascending: false })
-          .limit(1)
-          .maybeSingle(),
+        loadCandidateWalletMetrics(this.db, assetId, windowStart, cutoff),
       ]);
     const first = Number(
         (event.payload as any)?.priceUsd ?? market?.price_usd ?? NaN,
       ),
       price = Number.isFinite(first) ? first : null;
-    return {
+    return { features: {
       price,
       marketCap: num(market?.market_cap_usd),
       liquidity: num(market?.liquidity_usd),
       volume: num(market?.volume_24h_usd),
       tokenAgeSeconds: null,
-      rawWalletCount: snapshot?.raw_wallet_count ?? null,
-      confirmedIndependent:
-        snapshot?.status === "available"
-          ? snapshot.confirmed_independent_count
-          : null,
-      relationshipCoverage: num(snapshot?.relationship_coverage),
-      clusterAdjustedCount:
-        snapshot?.status === "available"
-          ? num(snapshot.cluster_adjusted_count)
-          : null,
-      verifiedWalletCount: null,
+      rawWalletCount: wallet.rawWalletCount,
+      confirmedIndependent: wallet.confirmedIndependent,
+      relationshipCoverage: wallet.relationshipCoverage,
+      clusterAdjustedCount: wallet.clusterAdjustedCount,
+      verifiedWalletCount: wallet.verifiedWalletCount,
       medianWalletScore: null,
       netInflow: null,
-      convergenceWindowMs: null,
+      convergenceWindowMs: wallet.convergenceWindowMs,
       riskStatus: risk?.rug_status ?? "UNKNOWN",
       dataQuality: Math.round(
         [
           market ? Number(market.confidence) : 0,
           risk ? Number(risk.data_quality) : 0,
-          snapshot ? Number(snapshot.data_quality) : 0,
+          wallet.dataQuality ?? 0,
         ].reduce((a, b) => a + b, 0) / 3,
       ),
       priceAtFirstWalletEntry: num((event.payload as any)?.priceUsd),
@@ -198,7 +189,7 @@ export class JackpotCollectorService {
         Date.parse(cutoff) - Date.parse(event.occurredAt),
       ),
       latencyFromConvergenceMs: null,
-    };
+    }, evidence: wallet.evidence };
   }
 }
 function num(value: unknown) {
