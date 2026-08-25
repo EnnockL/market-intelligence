@@ -3,7 +3,11 @@ import type { CryptoMarketBatch, CryptoMarketDataProvider, CryptoMarketPoint, Hi
 export class FreeCryptoMarketProvider implements CryptoMarketDataProvider {
   readonly name = "free-market-composite-v1";
   private static readonly MAX_FALLBACK_TOKENS_PER_RUN = 5;
-  constructor(private readonly primary: CryptoMarketDataProvider, private readonly liquidityFallback: CryptoMarketDataProvider) {}
+  constructor(
+    private readonly primary: CryptoMarketDataProvider,
+    private readonly liquidityFallback: CryptoMarketDataProvider,
+    private readonly historicalProvider: CryptoMarketDataProvider = liquidityFallback,
+  ) {}
 
   async getCurrent(mintAddresses: string[]): Promise<CryptoMarketBatch> {
     const primary = await this.primary.getCurrent(mintAddresses);
@@ -28,5 +32,5 @@ export class FreeCryptoMarketProvider implements CryptoMarketDataProvider {
     return { points, rateLimit: primary.rateLimit };
   }
 
-  getHistorical(request: HistoricalPriceRequest) { return this.liquidityFallback.getHistorical(request); }
+  getHistorical(request: HistoricalPriceRequest) { return this.historicalProvider.getHistorical(request); }
 }

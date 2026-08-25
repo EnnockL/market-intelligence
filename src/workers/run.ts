@@ -16,6 +16,7 @@ import { DexScreenerProvider } from "@/services/crypto-market/dexscreener-provid
 import { CoinGeckoHistoricalProvider } from "@/services/crypto-market/coingecko-provider";
 import { GeckoTerminalProvider } from "@/services/crypto-market/geckoterminal-provider";
 import { FreeCryptoMarketProvider } from "@/services/crypto-market/free-market-provider";
+import { BirdeyeHistoricalPriceProvider } from "@/services/crypto-market/birdeye-historical-provider";
 import { runFastFlow } from "./fast-flow";
 import { runWalletClustering } from "./wallet-clustering";
 import { runJackpotCollector } from "./jackpot-collector";
@@ -127,7 +128,13 @@ async function main() {
   const schedulerIngestion = {
     stockProvider: new FinnhubProvider(env.FINNHUB_API_KEY),
     blockchainProvider: new SolanaRpcProvider(env.SOLANA_RPC_URL),
-    cryptoProvider: new FreeCryptoMarketProvider(new DexScreenerProvider(), new GeckoTerminalProvider()),
+    cryptoProvider: new FreeCryptoMarketProvider(
+      new DexScreenerProvider(),
+      new GeckoTerminalProvider(),
+      env.BIRDEYE_API_KEY
+        ? new BirdeyeHistoricalPriceProvider(env.BIRDEYE_API_KEY)
+        : new GeckoTerminalProvider(),
+    ),
     stockSymbols,
     discoverySeeds,
   };
@@ -215,7 +222,11 @@ async function main() {
                                           );
                                         })()
                                     : await runWalletPnl(
-                                        env.COINGECKO_API_KEY
+                                        env.BIRDEYE_API_KEY
+                                          ? new BirdeyeHistoricalPriceProvider(
+                                              env.BIRDEYE_API_KEY,
+                                            )
+                                          : env.COINGECKO_API_KEY
                                           ? new CoinGeckoHistoricalProvider(
                                               env.COINGECKO_API_KEY,
                                             )
