@@ -10,4 +10,9 @@ describe("meta diagnostics readiness v1", () => {
   it("requires every forecast horizon", () => { const result = calculateMetaReadiness(assessments, groups.slice(0, 3)); expect(result.status).toBe("COLLECTING"); expect(result.readyHorizons).toHaveLength(3); });
   it("requires empirical calibration coverage", () => { const result = calculateMetaReadiness(assessments, groups.map((group) => ({ ...group, readyCalibrationBuckets: 0 }))); expect(result.blockers).toContain("CALIBRATION_NOT_READY"); });
   it("is deterministic", () => expect(calculateMetaReadiness(assessments, groups).resultHash).toBe(calculateMetaReadiness(assessments, groups).resultHash));
+  it("can produce fractional coverage that the service must round for the event envelope", () => {
+    const result = calculateMetaReadiness(assessments.slice(0, 3).map((item, index) => ({ ...item, decision: index === 0 ? "WATCH" : "INSUFFICIENT_DATA" })), []);
+    expect(result.decisionCoveragePct).toBeCloseTo(100 / 3);
+    expect(Number.isInteger(Math.round(result.decisionCoveragePct ?? 0))).toBe(true);
+  });
 });

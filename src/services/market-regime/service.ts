@@ -43,15 +43,9 @@ export class MarketRegimeService {
   private async observations(assetClass: RegimeAssetClass, assetIds: string[], cutoff: string): Promise<RegimeObservationPair[]> {
     if (!assetIds.length) return [];
     const lookback = REGIME_POLICY[assetClass].lookbackMs;
-    const from = new Date(Date.parse(cutoff) - lookback - Math.min(lookback, 86_400_000)).toISOString();
-    if (assetClass === "crypto") {
-      const { data, error } = await this.db.from("crypto_market_observations").select("id,asset_id,provider,price_usd,observed_at,ingested_at").in("asset_id", assetIds).gte("observed_at", from).lte("observed_at", cutoff).lte("ingested_at", cutoff).order("observed_at");
-      if (error) throw error;
-      return pairRows(data ?? [], cutoff, lookback, "observed_at", "price_usd");
-    }
-    const { data, error } = await this.db.from("market_prices").select("asset_id,provider,close,captured_at,source_event_id").in("asset_id", assetIds).gte("captured_at", from).lte("captured_at", cutoff).order("captured_at");
+    const { data, error } = await this.db.rpc("market_regime_observation_pairs", { p_asset_class: assetClass, p_cutoff: cutoff, p_lookback_seconds: Math.floor(lookback / 1000) });
     if (error) throw error;
-    return pairRows((data ?? []).map((row: any) => ({ ...row, id: row.source_event_id ?? `${row.asset_id}:${row.provider}:${row.captured_at}` })), cutoff, lookback, "captured_at", "close");
+    return (data ?? []).map((row: any) => ({ assetId: row.asset_id, currentPrice: Number(row.current_price), baselinePrice: Number(row.baseline_price), currentObservedAt: row.current_observed_at, baselineObservedAt: row.baseline_observed_at, evidenceRefs: [row.baseline_evidence_ref, row.current_evidence_ref] }));
   }
 }
 

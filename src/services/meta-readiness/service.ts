@@ -22,7 +22,7 @@ export class MetaReadinessService {
     const snapshotId = saved.data.id;
     const components = await this.db.from("meta_readiness_requirements").insert(result.requirements.map((item) => ({ snapshot_id: snapshotId, requirement_code: item.code, status: item.status, observed_value: item.observed, required_value: item.required, reason: item.reason })));
     if (components.error) throw components.error;
-    await this.transport.publish(createEventEnvelope({ eventType: "meta.readiness_observed", entityType: "meta_readiness_snapshot", entityId: snapshotId, assetId: null, occurredAt: cutoff, observedAt: cutoff, availableAt: cutoff, provider: "meta-readiness-engine", sourceReference: `meta-readiness:${snapshotKey}`, dataQuality: result.decisionCoveragePct ?? 0, confidence: null, payload: { status: result.status, blockers: result.blockers, policyVersion: META_READINESS_POLICY_VERSION }, correlationId: snapshotKey, causationId: null }));
+    await this.transport.publish(createEventEnvelope({ eventType: "meta.readiness_observed", entityType: "meta_readiness_snapshot", entityId: snapshotId, assetId: null, occurredAt: cutoff, observedAt: cutoff, availableAt: cutoff, provider: "meta-readiness-engine", sourceReference: `meta-readiness:${snapshotKey}`, dataQuality: Math.round(result.decisionCoveragePct ?? 0), confidence: null, payload: { status: result.status, blockers: result.blockers, policyVersion: META_READINESS_POLICY_VERSION }, correlationId: snapshotKey, causationId: null }));
     return { created: 1, status: result.status, blockers: result.blockers, assessmentCount: result.assessmentCount, policyVersion: META_READINESS_POLICY_VERSION };
   }
 }
