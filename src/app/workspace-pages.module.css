@@ -1,7 +1,134 @@
-.page{max-width:1440px;margin:0 auto;padding:24px 40px 80px;color:var(--text)}
-.hero{padding:38px 40px;margin-bottom:24px;border:1px solid var(--line);border-radius:24px;background:var(--surface);box-shadow:var(--shadow)}
-.hero small,.kicker{font:700 10px ui-monospace,monospace;letter-spacing:.16em;color:var(--green)}
-.hero h1{margin:10px 0;font-size:clamp(38px,5vw,64px);letter-spacing:-.055em}.hero p{max-width:760px;margin:0;color:var(--muted);line-height:1.65}
-.panel{margin-bottom:24px;border:1px solid var(--line);border-radius:20px;background:var(--surface);overflow:hidden}.panelHeader{display:flex;align-items:flex-end;justify-content:space-between;padding:24px 28px;border-bottom:1px solid var(--line)}.panelHeader h2{margin:7px 0 0}.list{display:grid}.row{display:grid;grid-template-columns:1.1fr .7fr .7fr .7fr 1.4fr;gap:16px;align-items:center;padding:18px 28px;border-bottom:1px solid var(--line)}.row:last-child{border:0}.row small{color:var(--muted);font:10px ui-monospace,monospace}.row strong{font-size:14px}.empty{padding:40px 28px;color:var(--muted)}
-.hub{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.hub a{min-height:170px;padding:24px;border:1px solid var(--line);border-radius:18px;background:var(--surface);display:flex;flex-direction:column;justify-content:space-between;transition:.2s}.hub a:hover{border-color:var(--line-strong);transform:translateY(-2px)}.hub h2{margin:8px 0}.hub p{color:var(--muted);line-height:1.5}.hub b{color:var(--green)}
-@media(max-width:900px){.page{padding:16px}.hero{padding:26px}.hub{grid-template-columns:1fr}.row{grid-template-columns:1fr 1fr}.row>*:last-child{grid-column:1/-1}}
+.page {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 24px 40px 80px;
+  color: var(--text);
+}
+.hero {
+  padding: 38px 40px;
+  margin-bottom: 24px;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+.hero small,
+.kicker {
+  font:
+    700 10px ui-monospace,
+    monospace;
+  letter-spacing: 0.16em;
+  color: var(--green);
+}
+.hero h1 {
+  margin: 10px 0;
+  font-size: clamp(38px, 5vw, 64px);
+  letter-spacing: -0.055em;
+}
+.hero p {
+  max-width: 760px;
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.65;
+}
+.panel {
+  margin-bottom: 24px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.panelHeader {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding: 24px 28px;
+  border-bottom: 1px solid var(--line);
+}
+.panelHeader h2 {
+  margin: 7px 0 0;
+}
+.list {
+  display: grid;
+}
+.row {
+  display: grid;
+  grid-template-columns: 1.1fr 0.7fr 0.7fr 0.7fr 1.4fr;
+  gap: 16px;
+  align-items: center;
+  padding: 18px 28px;
+  border-bottom: 1px solid var(--line);
+}
+.row:last-child {
+  border: 0;
+}
+.row small {
+  color: var(--muted);
+  font:
+    10px ui-monospace,
+    monospace;
+}
+.row strong {
+  font-size: 14px;
+}
+.empty {
+  padding: 40px 28px;
+  color: var(--muted);
+}
+.hub {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+.hub a {
+  min-height: 170px;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  transition: 0.2s;
+}
+.hub a:hover {
+  border-color: var(--line-strong);
+  transform: translateY(-2px);
+}
+.hub h2 {
+  margin: 8px 0;
+}
+.hub p {
+  color: var(--muted);
+  line-height: 1.5;
+}
+.hub b {
+  color: var(--green);
+}
+@media (max-width: 900px) {
+  .page {
+    padding: 16px;
+  }
+  .hero {
+    padding: 26px;
+  }
+  .hub {
+    grid-template-columns: 1fr;
+  }
+  .row {
+    grid-template-columns: 1fr 1fr;
+  }
+  .row > *:last-child {
+    grid-column: 1/-1;
+  }
+}
+@media (max-width: 560px) {
+  .page { padding: 14px 12px 64px; }
+  .hero, .panel { border-radius: 18px; }
+  .hero { padding: 24px 20px; }
+  .panelHeader { align-items: flex-start; flex-direction: column; padding: 20px; }
+  .row { grid-template-columns: 1fr; padding: 17px 20px; }
+  .row > *:last-child { grid-column: auto; }
+  .hub { gap: 10px; }
+  .hub a { min-height: 140px; padding: 20px; }
+}

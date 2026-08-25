@@ -1,1 +1,132 @@
-.page{max-width:1440px;margin:0 auto;padding:24px 40px 80px}.hero,.panel{border:1px solid var(--line);border-radius:22px;background:var(--surface);overflow:hidden}.hero{padding:38px 40px;margin-bottom:24px}.hero>small{color:var(--green);font:700 10px ui-monospace,monospace;letter-spacing:.16em}.hero h1{margin:10px 0;font-size:clamp(38px,5vw,64px);letter-spacing:-.05em}.hero p{max-width:800px;color:var(--muted);line-height:1.6}.hero>div{display:flex;gap:12px;align-items:baseline;margin-top:22px}.hero>div strong{font-size:24px}.hero>div span{margin-right:18px;color:var(--muted);font-size:11px}.panel header,.panel article{display:grid;grid-template-columns:1.4fr .55fr .9fr .85fr .65fr;gap:16px;align-items:center;padding:16px 24px;border-bottom:1px solid var(--line)}.panel header{color:var(--muted);font:700 9px ui-monospace,monospace;text-transform:uppercase}.panel article:last-child{border:0}.panel article>div{display:grid;gap:5px}.panel small{color:var(--muted);font-size:9px}.panel b,.panel code,.panel em{font:700 9px ui-monospace,monospace}.panel em{width:max-content;padding:5px 7px;border:1px solid var(--line);border-radius:999px;font-style:normal}.panel em[data-state=HEALTHY],.panel em[data-state=SUCCEEDED],.panel em[data-state=RUNNING]{color:var(--green)}.panel em[data-state=FAILED]{color:#ef7777}.panel a{display:grid;gap:5px;color:var(--soft)}.panel a span{color:var(--green);font-size:10px}@media(max-width:850px){.page{padding:16px}.hero{padding:26px}.panel header{display:none}.panel article{grid-template-columns:1fr 1fr}.panel article>div:first-child{grid-column:1/-1}}
+.page {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 24px 40px 80px;
+}
+.hero,
+.panel {
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.hero {
+  padding: 38px 40px;
+  margin-bottom: 24px;
+}
+.hero > small {
+  color: var(--green);
+  font:
+    700 10px ui-monospace,
+    monospace;
+  letter-spacing: 0.16em;
+}
+.hero h1 {
+  margin: 10px 0;
+  font-size: clamp(38px, 5vw, 64px);
+  letter-spacing: -0.05em;
+}
+.hero p {
+  max-width: 800px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+.hero > div {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  margin-top: 22px;
+}
+.hero > div strong {
+  font-size: 24px;
+}
+.hero > div span {
+  margin-right: 18px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.panel header,
+.panel article {
+  display: grid;
+  grid-template-columns: 1.4fr 0.55fr 0.9fr 0.85fr 0.65fr;
+  gap: 16px;
+  align-items: center;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--line);
+}
+.panel header {
+  color: var(--muted);
+  font:
+    700 9px ui-monospace,
+    monospace;
+  text-transform: uppercase;
+}
+.panel article:last-child {
+  border: 0;
+}
+.panel article > div {
+  display: grid;
+  gap: 5px;
+}
+.panel small {
+  color: var(--muted);
+  font-size: 9px;
+}
+.panel b,
+.panel code,
+.panel em {
+  font:
+    700 9px ui-monospace,
+    monospace;
+}
+.panel em {
+  width: max-content;
+  padding: 5px 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-style: normal;
+}
+.panel em[data-state="HEALTHY"],
+.panel em[data-state="SUCCEEDED"],
+.panel em[data-state="RUNNING"] {
+  color: var(--green);
+}
+.panel em[data-state="FAILED"] {
+  color: #ef7777;
+}
+.panel a {
+  display: grid;
+  gap: 5px;
+  color: var(--soft);
+}
+.panel a span {
+  color: var(--green);
+  font-size: 10px;
+}
+@media (max-width: 850px) {
+  .page {
+    padding: 16px;
+  }
+  .hero {
+    padding: 26px;
+  }
+  .panel header {
+    display: none;
+  }
+  .panel article {
+    grid-template-columns: 1fr 1fr;
+  }
+  .panel article > div:first-child {
+    grid-column: 1/-1;
+  }
+}
+@media (max-width: 560px) {
+  .page { padding: 14px 12px 64px; }
+  .hero, .panel { border-radius: 18px; }
+  .hero { padding: 26px 20px; }
+  .hero h1 { font-size: 42px; }
+  .hero > div { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .hero > div span { margin: 0; }
+  .panel article { grid-template-columns: 1fr; padding: 17px 18px; }
+  .panel article > div:first-child { grid-column: auto; }
+}
