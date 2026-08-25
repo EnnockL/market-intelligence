@@ -164,8 +164,8 @@ const ORB_RETEST_BASE = {
   entryCutoffMinutes: 60, minimumBreakoutVolumeMultiple: 1.5, requireVwapConfirmation: true,
   feeBps: 1, slippageBps: 2, minimumSampleSize: MIN_STRATEGY_SAMPLE_SIZE,
 };
-export const ORB_RETEST_5M_V1: StrategyDefinition = { ...ORB_RETEST_BASE, strategyId: "orb-retest-5m", version: 1, name: "Opening Range Breakout · 5m Retest", openingRangeMinutes: 5 };
-export const ORB_RETEST_15M_V1: StrategyDefinition = { ...ORB_RETEST_BASE, strategyId: "orb-retest-15m", version: 1, name: "Opening Range Breakout · 15m Retest", openingRangeMinutes: 15 };
+export const ORB_RETEST_5M_V1: StrategyDefinition = { ...ORB_RETEST_BASE, strategyId: "orb-retest-5m", version: 2, name: "Opening Range Breakout · 5m Retest", openingRangeMinutes: 5 };
+export const ORB_RETEST_15M_V1: StrategyDefinition = { ...ORB_RETEST_BASE, strategyId: "orb-retest-15m", version: 2, name: "Opening Range Breakout · 15m Retest", openingRangeMinutes: 15 };
 export const ORB_RETEST_30M_V1: StrategyDefinition = { ...ORB_RETEST_BASE, strategyId: "orb-retest-30m", version: 1, name: "Opening Range Breakout · 30m Retest", openingRangeMinutes: 30, entryCutoffMinutes: 120 };
 export const ORB_DIRECT_15M_V1: StrategyDefinition = { ...ORB_RETEST_BASE, strategyId: "orb-direct-15m", version: 1, name: "Opening Range Breakout · 15m Direct", openingRangeMinutes: 15, requireRetest: false };
 

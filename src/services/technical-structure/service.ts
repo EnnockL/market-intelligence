@@ -18,8 +18,22 @@ export class TechnicalStructureService {
     return { structure, context, reused: saved.error?.code === "23505" };
   }
   async loadCandles(assetId: string, timeframe: string, cutoffAt: string): Promise<MarketCandle[]> {
-    const { data, error } = await this.db.from("market_candles").select("id,asset_id,timeframe,opened_at,closed_at,available_at,open,high,low,close,volume").eq("asset_id", assetId).eq("timeframe", timeframe).lte("closed_at", cutoffAt).lte("available_at", cutoffAt).order("opened_at");
-    if (error) throw error;
-    return (data ?? []).map((item: any) => ({ id: item.id, assetId: item.asset_id, timeframe: item.timeframe, openedAt: item.opened_at, closedAt: item.closed_at, availableAt: item.available_at, open: Number(item.open), high: Number(item.high), low: Number(item.low), close: Number(item.close), volume: item.volume === null ? null : Number(item.volume) }));
+    const pageSize = 1_000;
+    const rows: any[] = [];
+    for (let offset = 0; ; offset += pageSize) {
+      const { data, error } = await this.db.from("market_candles")
+        .select("id,asset_id,timeframe,opened_at,closed_at,available_at,open,high,low,close,volume")
+        .eq("asset_id", assetId)
+        .eq("timeframe", timeframe)
+        .lte("closed_at", cutoffAt)
+        .lte("available_at", cutoffAt)
+        .order("opened_at", { ascending: true })
+        .order("id", { ascending: true })
+        .range(offset, offset + pageSize - 1);
+      if (error) throw error;
+      rows.push(...(data ?? []));
+      if ((data ?? []).length < pageSize) break;
+    }
+    return rows.map((item: any) => ({ id: item.id, assetId: item.asset_id, timeframe: item.timeframe, openedAt: item.opened_at, closedAt: item.closed_at, availableAt: item.available_at, open: Number(item.open), high: Number(item.high), low: Number(item.low), close: Number(item.close), volume: item.volume === null ? null : Number(item.volume) }));
   }
 }
