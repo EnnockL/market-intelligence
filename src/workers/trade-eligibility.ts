@@ -1,0 +1,1 @@
+import type{SupabaseClient}from"@supabase/supabase-js";import{TradeEligibilityService}from"@/services/trade-eligibility/service";export function runTradeEligibility(db:SupabaseClient){return new TradeEligibilityService(db).run()}
