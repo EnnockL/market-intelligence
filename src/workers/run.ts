@@ -17,6 +17,7 @@ import { CoinGeckoHistoricalProvider } from "@/services/crypto-market/coingecko-
 import { GeckoTerminalProvider } from "@/services/crypto-market/geckoterminal-provider";
 import { FreeCryptoMarketProvider } from "@/services/crypto-market/free-market-provider";
 import { BirdeyeHistoricalPriceProvider } from "@/services/crypto-market/birdeye-historical-provider";
+import { BirdeyeLiveMarketProvider } from "@/services/crypto-market/birdeye-live-provider";
 import { runFastFlow } from "./fast-flow";
 import { runWalletClustering } from "./wallet-clustering";
 import { runJackpotCollector } from "./jackpot-collector";
@@ -129,7 +130,9 @@ async function main() {
     stockProvider: new FinnhubProvider(env.FINNHUB_API_KEY),
     blockchainProvider: new SolanaRpcProvider(env.SOLANA_RPC_URL),
     cryptoProvider: new FreeCryptoMarketProvider(
-      new DexScreenerProvider(),
+      env.BIRDEYE_API_KEY
+        ? new BirdeyeLiveMarketProvider(env.BIRDEYE_API_KEY, new DexScreenerProvider())
+        : new DexScreenerProvider(),
       new GeckoTerminalProvider(),
       env.BIRDEYE_API_KEY
         ? new BirdeyeHistoricalPriceProvider(env.BIRDEYE_API_KEY)
@@ -199,7 +202,9 @@ async function main() {
                                 : job === "crypto-market"
                                   ? await runCryptoMarketIngestion(
                                       new FreeCryptoMarketProvider(
-                                        new DexScreenerProvider(),
+                                        env.BIRDEYE_API_KEY
+                                          ? new BirdeyeLiveMarketProvider(env.BIRDEYE_API_KEY, new DexScreenerProvider())
+                                          : new DexScreenerProvider(),
                                         new GeckoTerminalProvider(),
                                       ),
                                       repository,

@@ -15,7 +15,7 @@ describe("free market provider", () => {
   it("uses the fallback only when primary liquidity is unavailable", async () => {
     const primary = provider(point("dexscreener", null, "dex-pool")); const fallback = provider(point("geckoterminal", 42_000, "gecko-pool"));
     const result = await new FreeCryptoMarketProvider(primary, fallback).getCurrent(["mint"]);
-    expect(result.points[0]).toMatchObject({ provider: "geckoterminal", liquidityUsd: 42_000, poolAddress: "gecko-pool" });
+    expect(result.points[0]).toMatchObject({ provider: "dexscreener", liquidityUsd: 42_000, poolAddress: "dex-pool" });
     expect(fallback.getCurrent).toHaveBeenCalledOnce();
   });
 

@@ -8,6 +8,7 @@ import { DexScreenerProvider } from "@/services/crypto-market/dexscreener-provid
 import { GeckoTerminalProvider } from "@/services/crypto-market/geckoterminal-provider";
 import { FreeCryptoMarketProvider } from "@/services/crypto-market/free-market-provider";
 import { BirdeyeHistoricalPriceProvider } from "@/services/crypto-market/birdeye-historical-provider";
+import { BirdeyeLiveMarketProvider } from "@/services/crypto-market/birdeye-live-provider";
 export const runtime = "nodejs";
 // Some bounded ingestion jobs make several upstream provider calls before they
 // can persist their cursor. Pro deployments allow a longer function window;
@@ -26,7 +27,9 @@ export async function GET(request: NextRequest) {
     stockProvider: new FinnhubProvider(key),
     blockchainProvider: new SolanaRpcProvider(rpcUrl),
     cryptoProvider: new FreeCryptoMarketProvider(
-      new DexScreenerProvider(),
+      process.env.BIRDEYE_API_KEY
+        ? new BirdeyeLiveMarketProvider(process.env.BIRDEYE_API_KEY, new DexScreenerProvider())
+        : new DexScreenerProvider(),
       new GeckoTerminalProvider(),
       process.env.BIRDEYE_API_KEY
         ? new BirdeyeHistoricalPriceProvider(process.env.BIRDEYE_API_KEY)

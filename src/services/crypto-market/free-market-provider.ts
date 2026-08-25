@@ -26,8 +26,17 @@ export class FreeCryptoMarketProvider implements CryptoMarketDataProvider {
     }
     const fallbackByMint = new Map(fallback.points.map((point) => [point.mintAddress, point]));
     const points = primary.points.map((point): CryptoMarketPoint => {
-      const replacement = fallbackByMint.get(point.mintAddress);
-      return replacement?.liquidityUsd !== null && replacement?.poolAddress ? replacement : point;
+      const fallbackPoint = fallbackByMint.get(point.mintAddress);
+      if (!fallbackPoint) return point;
+      const liquidityUsd = point.liquidityUsd ?? fallbackPoint.liquidityUsd;
+      const poolAddress = point.poolAddress ?? fallbackPoint.poolAddress;
+      if (liquidityUsd === point.liquidityUsd && poolAddress === point.poolAddress) return point;
+      return {
+        ...point,
+        liquidityUsd,
+        poolAddress,
+        rawPayload: { primary: point.rawPayload, liquidityFallback: fallbackPoint.rawPayload },
+      };
     });
     return { points, rateLimit: primary.rateLimit };
   }
