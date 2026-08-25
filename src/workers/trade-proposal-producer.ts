@@ -1,0 +1,1 @@
+import type{SupabaseClient}from"@supabase/supabase-js";import{TradeProposalProducerService}from"@/services/trade-proposal-producer/service";export function runTradeProposalProducer(db:SupabaseClient){return new TradeProposalProducerService(db).run()}

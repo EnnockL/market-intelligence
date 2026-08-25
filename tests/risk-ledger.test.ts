@@ -1,0 +1,9 @@
+import { describe,expect,it } from "vitest";
+import { rebuildRiskLedger,riskContextFromSnapshot } from "@/domain/risk-ledger";
+const cutoff="2026-08-24T12:00:00.000Z";
+describe("risk ledger",()=>{
+ it("rebuilds deterministic realized pnl and cash",()=>{const input={accountId:"a",initialCashSek:1000,reservedExposureSek:0,cutoffAt:cutoff,fills:[{fillId:"1",side:"BUY"as const,quantity:2,priceSek:100,feeSek:1,occurredAt:"2026-08-24T09:00:00.000Z",availableAt:"2026-08-24T09:00:01.000Z"},{fillId:"2",side:"SELL"as const,quantity:1,priceSek:120,feeSek:1,occurredAt:"2026-08-24T10:00:00.000Z",availableAt:"2026-08-24T10:00:01.000Z"}]};const a=rebuildRiskLedger(input),b=rebuildRiskLedger({...input,fills:[...input.fills].reverse()});expect(a.resultHash).toBe(b.resultHash);expect(a.cashSek).toBe(918);expect(a.realizedPnlSek).toBe(18.5);expect(a.openQuantity).toBe(1)});
+ it("returns UNKNOWN rather than inventing converted prices",()=>{const snapshot=rebuildRiskLedger({accountId:"a",initialCashSek:1000,reservedExposureSek:0,cutoffAt:cutoff,fills:[{fillId:"usd",side:"BUY",quantity:1,priceSek:null,feeSek:null,occurredAt:"2026-08-24T09:00:00.000Z",availableAt:"2026-08-24T09:00:01.000Z"}]});expect(snapshot.status).toBe("UNKNOWN");expect(riskContextFromSnapshot(snapshot).dailyLossSek).toBeNull()});
+ it("rejects future fills",()=>expect(()=>rebuildRiskLedger({accountId:"a",initialCashSek:1000,reservedExposureSek:0,cutoffAt:cutoff,fills:[{fillId:"future",side:"BUY",quantity:1,priceSek:1,feeSek:0,occurredAt:"2026-08-24T12:01:00.000Z",availableAt:"2026-08-24T12:01:01.000Z"}]})).toThrow("Future fill"));
+ it("does not silently allow oversells",()=>expect(rebuildRiskLedger({accountId:"a",initialCashSek:1000,reservedExposureSek:0,cutoffAt:cutoff,fills:[{fillId:"sell",side:"SELL",quantity:1,priceSek:2,feeSek:0,occurredAt:"2026-08-24T10:00:00.000Z",availableAt:"2026-08-24T10:00:01.000Z"}]}).status).toBe("UNKNOWN"));
+});

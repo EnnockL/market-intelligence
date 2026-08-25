@@ -1,0 +1,5 @@
+import { describe, expect, it, vi } from "vitest";
+import { SolanaRpcProvider } from "../src/services/blockchain/solana-rpc-provider";
+describe("Solana wallet history pagination", () => {
+  it("uses before cursor, deterministic order input, and a bounded request budget", async () => { const fetcher = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => { const body = JSON.parse(String(init?.body)); if (body.method === "getSignaturesForAddress") return new Response(JSON.stringify({ result: [{ signature: "s3" }, { signature: "s2" }, { signature: "s1" }] }), { status: 200 }); return new Response(JSON.stringify({ result: null }), { status: 200 }); }); const result = await new SolanaRpcProvider("https://rpc.test", fetcher).getWalletTransactions("wallet", { beforeSignature: "cursor", limit: 100, maxRequests: 4 }); const firstBody = JSON.parse(String(fetcher.mock.calls[0][1]?.body)); expect(firstBody.params[1]).toMatchObject({ before: "cursor", limit: 3 }); expect(result).toMatchObject({ oldestSignature: "s1", newestSignature: "s3", hasMore: true, requestsUsed: 4 }); expect(fetcher).toHaveBeenCalledTimes(4); });
+});

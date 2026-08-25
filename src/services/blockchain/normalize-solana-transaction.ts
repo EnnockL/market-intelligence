@@ -1,6 +1,6 @@
 import type { NormalizedWalletTransaction } from "./provider";
 
-type TokenBalance = { accountIndex: number; mint: string; owner?: string; uiTokenAmount: { uiAmount: number | null } };
+type TokenBalance = { accountIndex: number; mint: string; owner?: string; uiTokenAmount: { uiAmount: number | null; decimals?: number } };
 type ParsedTransaction = {
   slot: number; blockTime: number | null;
   transaction: { signatures: string[]; message: { accountKeys: Array<string | { pubkey: string }> } };
@@ -18,14 +18,17 @@ export function normalizeSolanaTransaction(raw: ParsedTransaction, walletAddress
   const post = balancesForOwner(raw.meta.postTokenBalances ?? [], walletAddress);
   const mints = new Set([...pre.keys(), ...post.keys()]);
   const changes = [...mints].map((mint) => ({ mint, delta: (post.get(mint) ?? 0) - (pre.get(mint) ?? 0) })).filter((item) => Math.abs(item.delta) > 1e-12);
-  if (changes.length === 0) return [{ walletAddress, signature, instructionIndex: 0, mintAddress: null, side: "transfer", quantity: null, nativeValueSol: nativeDelta, slot: raw.slot, occurredAt: new Date(raw.blockTime * 1000).toISOString(), receivedAt, rawPayload: raw }];
+  if (changes.length === 0) return [{ walletAddress, signature, instructionIndex: 0, mintAddress: null, tokenDecimals: null, side: "transfer", quantity: null, nativeValueSol: nativeDelta, slot: raw.slot, occurredAt: new Date(raw.blockTime * 1000).toISOString(), receivedAt, rawPayload: raw }];
   return changes.map((change, index) => ({
     walletAddress, signature, instructionIndex: index, mintAddress: change.mint,
+    tokenDecimals: decimalsForMint(raw.meta!.postTokenBalances ?? raw.meta!.preTokenBalances ?? [], change.mint),
     side: change.delta > 0 && nativeDelta < 0 ? "buy" : change.delta < 0 && nativeDelta > 0 ? "sell" : "transfer",
     quantity: Math.abs(change.delta), nativeValueSol: Math.abs(nativeDelta), slot: raw.slot,
     occurredAt: new Date(raw.blockTime! * 1000).toISOString(), receivedAt, rawPayload: raw,
   }));
 }
+
+function decimalsForMint(balances: TokenBalance[], mint: string) { return balances.find((balance) => balance.mint === mint)?.uiTokenAmount.decimals ?? null; }
 
 function balancesForOwner(balances: TokenBalance[], owner: string) {
   const result = new Map<string, number>();

@@ -24,6 +24,15 @@ export interface WalletScoreResult {
   version: "wallet-v1";
 }
 
+export interface WalletMetricsV2 {
+  closedTrades: number; verifiedTrades: number; winRate: number | null; medianReturn: number | null;
+  realizedPnlUsd: number | null; maxDrawdown: number | null; rugExposureRate: number | null;
+  medianHoldingSeconds: number | null; overallDataQuality: number;
+}
+export type WalletScoreV2Result = Omit<WalletScoreResult, "version"> & { version: "wallet-v2"; lifecycle: "candidate" | "reviewing"; missingComponents: string[]; };
+export interface WalletMetricsV3 { verifiedTrades: number; winRate: number | null; medianReturn: number | null; realizedPnlUsd: number | null; maxDrawdown: number | null; rugExposureRate: number | null; entryQuality: number | null; executionQuality: number | null; overallDataQuality: number; }
+export interface WalletScoreV3Result { score: number; dataQuality: number; components: ScoreComponent[]; version: "wallet-score-v3"; missingComponents: string[]; }
+
 const clamp = (value: number, min = 0, max = 100) =>
   Math.min(max, Math.max(min, value));
 
@@ -60,3 +69,39 @@ export function calculateWalletScore(metrics: WalletMetrics): WalletScoreResult 
   };
 }
 
+export function calculateWalletScoreV2(metrics: WalletMetricsV2): WalletScoreV2Result {
+  const missingComponents = [metrics.winRate === null ? "win_rate" : null, metrics.medianReturn === null ? "median_return" : null,
+    metrics.realizedPnlUsd === null ? "realized_pnl" : null, metrics.maxDrawdown === null ? "max_drawdown" : null,
+    metrics.rugExposureRate === null ? "rug_exposure" : null].filter((item): item is string => item !== null);
+  const sample = clamp(metrics.verifiedTrades / 100 * 100); const componentCompleteness = (5 - missingComponents.length) / 5 * 100;
+  const completeness = clamp(metrics.overallDataQuality * .6 + componentCompleteness * .4);
+  const values = [
+    { name: "profitability", raw: metrics.realizedPnlUsd ?? 0, score: metrics.realizedPnlUsd === null ? 0 : clamp(50 + metrics.realizedPnlUsd / 5_000), weight: .25 },
+    { name: "win_rate", raw: metrics.winRate ?? 0, score: metrics.winRate === null ? 0 : clamp(metrics.winRate * 100), weight: .2 },
+    { name: "median_return", raw: metrics.medianReturn ?? 0, score: metrics.medianReturn === null ? 0 : clamp(50 + metrics.medianReturn), weight: .15 },
+    { name: "downside_control", raw: metrics.maxDrawdown ?? 0, score: metrics.maxDrawdown === null ? 0 : clamp(100 - metrics.maxDrawdown * 200), weight: .15 },
+    { name: "rug_safety", raw: metrics.rugExposureRate ?? 0, score: metrics.rugExposureRate === null ? 0 : clamp(100 - metrics.rugExposureRate * 250), weight: .1 },
+    { name: "sample_size", raw: metrics.verifiedTrades, score: sample, weight: .05 },
+    { name: "data_completeness", raw: completeness, score: completeness, weight: .1 },
+  ];
+  const components = values.map((item) => ({ name: item.name, rawValue: item.raw, normalizedScore: Math.round(item.score * 100) / 100, weight: item.weight, contribution: Math.round(item.score * item.weight * 100) / 100 }));
+  const score = Math.round(clamp(components.reduce((sum, item) => sum + item.contribution, 0) * (.5 + sample / 200)));
+  return { score, dataQuality: Math.round(completeness), components, version: "wallet-v2", lifecycle: metrics.verifiedTrades >= 20 && completeness >= 80 && missingComponents.length === 0 ? "reviewing" : "candidate", missingComponents };
+}
+
+export function calculateWalletScoreV3(metrics: WalletMetricsV3): WalletScoreV3Result {
+  const missing = [["profitability", metrics.realizedPnlUsd], ["consistency", metrics.winRate], ["drawdown", metrics.maxDrawdown], ["rug_exposure", metrics.rugExposureRate], ["entry_quality", metrics.entryQuality], ["execution_quality", metrics.executionQuality]].filter(([, value]) => value === null).map(([name]) => String(name));
+  const definitions = [
+    { name: "profitability", raw: metrics.realizedPnlUsd, score: metrics.realizedPnlUsd === null ? 0 : clamp(50 + metrics.realizedPnlUsd / 5000), weight: .2 },
+    { name: "consistency", raw: metrics.winRate, score: metrics.winRate === null ? 0 : clamp(metrics.winRate * 100), weight: .15 },
+    { name: "median_return", raw: metrics.medianReturn, score: metrics.medianReturn === null ? 0 : clamp(50 + metrics.medianReturn), weight: .1 },
+    { name: "drawdown_control", raw: metrics.maxDrawdown, score: metrics.maxDrawdown === null ? 0 : clamp(100 - metrics.maxDrawdown * 200), weight: .15 },
+    { name: "rug_safety", raw: metrics.rugExposureRate, score: metrics.rugExposureRate === null ? 0 : clamp(100 - metrics.rugExposureRate * 250), weight: .1 },
+    { name: "entry_quality", raw: metrics.entryQuality, score: metrics.entryQuality ?? 0, weight: .08 },
+    { name: "execution_quality", raw: metrics.executionQuality, score: metrics.executionQuality ?? 0, weight: .07 },
+    { name: "data_completeness", raw: metrics.overallDataQuality, score: metrics.overallDataQuality, weight: .15 },
+  ];
+  const components = definitions.map((item) => ({ name: item.name, rawValue: item.raw ?? 0, normalizedScore: Math.round(item.score * 100) / 100, weight: item.weight, contribution: Math.round(item.score * item.weight * 100) / 100 }));
+  const sampleMultiplier = Math.min(1, Math.sqrt(metrics.verifiedTrades / 20));
+  return { score: Math.round(clamp(components.reduce((sum, item) => sum + item.contribution, 0) * sampleMultiplier)), dataQuality: Math.round(metrics.overallDataQuality), components, version: "wallet-score-v3", missingComponents: missing };
+}

@@ -1,4 +1,4 @@
-export type AssetKind = "stock" | "crypto";
+export type AssetKind = "stock" | "crypto" | "forex";
 export type SignalDirection = "bullish" | "bearish" | "neutral";
 export type RiskLevel = "low" | "medium" | "high" | "extreme";
 
@@ -14,9 +14,10 @@ export interface Opportunity {
   summary: string;
   factors: string[];
   negativeFactors: number;
-  price: number;
-  change24h: number;
+  price: number | null;
+  change24h: number | null;
   updatedAt: string;
+  dataMode?: "live" | "stale" | "degraded" | "unavailable";
 }
 
 export interface MarketPulse {
@@ -24,6 +25,7 @@ export interface MarketPulse {
   value: string;
   change: string;
   tone: "positive" | "negative" | "neutral";
+  dataMode?: "live" | "stale" | "degraded" | "unavailable";
 }
 
 export interface SmartMoneyCluster {
@@ -32,11 +34,11 @@ export interface SmartMoneyCluster {
 }
 
 export interface StockRadarItem {
-  symbol: string; signal: SignalDirection; score: number; catalyst: string; change: number;
+  symbol: string; signal: SignalDirection; score: number | null; catalyst: string; change: number | null;
 }
 
 export interface RecentSignal {
-  id: string; symbol: string; label: string; scoreImpact: number; occurredAt: string;
+  id: string; symbol: string; label: string; scoreImpact: number | null; occurredAt: string;
 }
 
 export interface WatchlistAsset {
