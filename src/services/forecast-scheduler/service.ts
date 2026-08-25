@@ -47,6 +47,8 @@ import { GeckoTerminalPoolDiscoveryProvider } from "@/services/pool-discovery/ge
 import { DexScreenerPoolDiscoveryProvider } from "@/services/pool-discovery/dexscreener-provider";
 import { runPoolDiscovery } from "@/workers/pool-discovery";
 import { runWalletPromotion } from "@/workers/wallet-promotion";
+import { runWalletPnl } from "@/workers/wallet-pnl";
+import { runWalletEvidence } from "@/workers/wallet-evidence";
 
 export interface SchedulerNewsConfig {
   provider: NewsProvider;
@@ -217,6 +219,29 @@ export class ForecastSchedulerService {
     }
     if (job.job_type === "WALLET_PROMOTION")
       return runWalletPromotion(this.db, now);
+    if (job.job_type === "WALLET_EVIDENCE") {
+      const env = getWorkerEnv();
+      if (!env.BIRDEYE_API_KEY) throw new Error("BIRDEYE_API_KEY_REQUIRED");
+      return runWalletEvidence(
+        new BirdeyeHistoricalLiquidityProvider(env.BIRDEYE_API_KEY),
+        new FallbackTokenRiskProvider(
+          new BirdeyeTokenRiskProvider(env.BIRDEYE_API_KEY),
+          new SolanaRpcTokenRiskProvider(env.SOLANA_RPC_URL),
+        ),
+        repo,
+        Math.max(1, Math.min(env.WALLET_EVIDENCE_MAX_TOKENS, Number(job.rate_limit_budget?.maxTokens ?? 5))),
+        now,
+      );
+    }
+    if (job.job_type === "WALLET_PNL") {
+      if (!this.ingestion)
+        throw new Error("INGESTION_PROVIDERS_NOT_CONFIGURED");
+      return runWalletPnl(
+        this.ingestion.cryptoProvider,
+        repo,
+        Math.max(1, Math.min(50, Number(job.rate_limit_budget?.maxTransactions ?? 10))),
+      );
+    }
     if (job.job_type === "CRYPTO_MARKET") {
       if (!this.ingestion)
         throw new Error("INGESTION_PROVIDERS_NOT_CONFIGURED");
