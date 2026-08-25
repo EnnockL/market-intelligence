@@ -2,25 +2,28 @@ import { deterministicDigest } from "./events";
 import { marketTimeContext, type MarketSession, type SessionWindow } from "./market-time";
 import type { MarketCandle } from "./technical-structure";
 
-export const STRATEGY_LAB_VERSION = "strategy-pattern-lab-v1";
+export const STRATEGY_LAB_VERSION = "strategy-pattern-lab-v2";
 export const MIN_STRATEGY_SAMPLE_SIZE = 30;
-export type StrategySetupType = "SESSION_SWEEP_REVERSAL" | "EMA_VWAP_MOMENTUM";
+export type StrategySetupType = "SESSION_SWEEP_REVERSAL" | "EMA_VWAP_MOMENTUM" | "OPENING_RANGE_BREAKOUT";
 export interface StrategyDefinition {
   strategyId: string; version: number; name: string; market: string; timeframe: string; setupType: StrategySetupType;
   exchangeTimeZone: string; referenceSession?: MarketSession; allowedSession: MarketSession; sessionWindows: SessionWindow[];
   rejectionCloseInside: boolean; stopBufferBps: number; targetPolicy: "OPPOSITE_REFERENCE_LEVEL" | "FIXED_R"; targetR?: number;
   fastEmaPeriod?: number; slowEmaPeriod?: number;
+  openingRangeMinutes?: number; breakoutConfirmation?: "CLOSE"; requireRetest?: boolean; retestToleranceBps?: number; retestMaxCandles?: number;
+  entryCutoffMinutes?: number; minimumBreakoutVolumeMultiple?: number; requireVwapConfirmation?: boolean;
   feeBps: number; slippageBps: number; minimumSampleSize: number;
 }
-export interface StrategyTrade { tradeKey: string; side: "LONG" | "SHORT"; setupAt: string; enteredAt: string; exitedAt: string; entry: number; stop: number; target: number; exit: number; outcome: "WIN" | "LOSS" | "TIME_EXIT"; rMultiple: number; mfeR: number; maeR: number; holdMinutes: number; evidenceRefs: string[]; session: string; weekday: string; regime: string; }
+export interface StrategyTrade { tradeKey: string; side: "LONG" | "SHORT"; setupAt: string; enteredAt: string; exitedAt: string; entry: number; stop: number; target: number; exit: number; outcome: "WIN" | "LOSS" | "TIME_EXIT"; rMultiple: number; mfeR: number; maeR: number; holdMinutes: number; evidenceRefs: string[]; session: string; weekday: string; regime: string; entryHour: string; volatilityBucket: string; }
 
 export function evaluateStrategy(definition: StrategyDefinition, sourceCandles: MarketCandle[], cutoffAt: string, regimeAt: (at: string) => string = () => "UNKNOWN") {
   validateDefinition(definition);
   const candles = sourceCandles.filter(item => item.timeframe === definition.timeframe && item.closedAt <= cutoffAt && item.availableAt <= cutoffAt).sort((a, b) => a.openedAt.localeCompare(b.openedAt) || a.id.localeCompare(b.id));
-  const trades = definition.setupType === "SESSION_SWEEP_REVERSAL" ? sweepReversalTrades(definition, candles, regimeAt) : emaVwapTrades(definition, candles, regimeAt);
+  const evaluated = definition.setupType === "SESSION_SWEEP_REVERSAL" ? { trades: sweepReversalTrades(definition, candles, regimeAt), setupCount: null } : definition.setupType === "EMA_VWAP_MOMENTUM" ? { trades: emaVwapTrades(definition, candles, regimeAt), setupCount: null } : openingRangeBreakoutTrades(definition, candles, regimeAt);
+  const trades = evaluated.trades;
   const metrics = aggregateTrades(trades, definition.minimumSampleSize);
   const inputHash = deterministicDigest({ definition, cutoffAt, candleIds: candles.map(item => item.id) });
-  return { version: STRATEGY_LAB_VERSION, strategyId: definition.strategyId, strategyVersion: definition.version, cutoffAt, inputHash, candleCount: candles.length, setupCount: trades.length, tradeCount: trades.length, trades, ...metrics };
+  return { version: STRATEGY_LAB_VERSION, strategyId: definition.strategyId, strategyVersion: definition.version, cutoffAt, inputHash, candleCount: candles.length, setupCount: evaluated.setupCount ?? trades.length, tradeCount: trades.length, trades, ...metrics };
 }
 
 export function aggregateTrades(trades: StrategyTrade[], minimumSampleSize = MIN_STRATEGY_SAMPLE_SIZE) {
@@ -61,7 +64,7 @@ function sweepReversalTrades(definition: StrategyDefinition, candles: MarketCand
     }
     const costs = entry * (definition.feeBps + definition.slippageBps) / 10_000, pnl = (side === "LONG" ? exit - entry : entry - exit) - costs;
     const time = marketTimeContext(item.candle.closedAt, definition.exchangeTimeZone, definition.sessionWindows);
-    trades.push({ tradeKey: deterministicDigest({ strategy: definition.strategyId, version: definition.version, candle: item.candle.id }), side, setupAt: item.candle.closedAt, enteredAt: item.candle.closedAt, exitedAt: exitCandle.candle.closedAt, entry, stop, target, exit, outcome, rMultiple: pnl / risk, mfeR: maxFavorable / risk, maeR: -maxAdverse / risk, holdMinutes: Math.max(0, (Date.parse(exitCandle.candle.closedAt) - Date.parse(item.candle.closedAt)) / 60_000), evidenceRefs: [...previous.range.ids, item.candle.id, exitCandle.candle.id], session: time.marketSession, weekday: time.weekday, regime: regimeAt(item.candle.closedAt) });
+    trades.push({ tradeKey: deterministicDigest({ strategy: definition.strategyId, version: definition.version, candle: item.candle.id }), side, setupAt: item.candle.closedAt, enteredAt: item.candle.closedAt, exitedAt: exitCandle.candle.closedAt, entry, stop, target, exit, outcome, rMultiple: pnl / risk, mfeR: maxFavorable / risk, maeR: -maxAdverse / risk, holdMinutes: Math.max(0, (Date.parse(exitCandle.candle.closedAt) - Date.parse(item.candle.closedAt)) / 60_000), evidenceRefs: [...previous.range.ids, item.candle.id, exitCandle.candle.id], session: time.marketSession, weekday: time.weekday, regime: regimeAt(item.candle.closedAt), entryHour: time.localExchangeTime.slice(0, 2), volatilityBucket: "UNKNOWN" });
     index = sessions.indexOf(exitCandle);
   }
   return trades;
@@ -88,17 +91,62 @@ function emaVwapTrades(definition: StrategyDefinition, candles: MarketCandle[], 
     let exitCandle = path.at(-1) ?? entryCandle, exit = exitCandle.close, outcome: StrategyTrade["outcome"] = "TIME_EXIT", mfe = 0, mae = 0;
     for (const next of path) { mfe = Math.max(mfe, side === "LONG" ? next.high - entry : entry - next.low); mae = Math.max(mae, side === "LONG" ? entry - next.low : next.high - entry); const stopHit = side === "LONG" ? next.low <= stop : next.high >= stop, targetHit = side === "LONG" ? next.high >= target : next.low <= target; if (stopHit || targetHit) { outcome = stopHit ? "LOSS" : "WIN"; exit = stopHit ? stop : target; exitCandle = next; break; } }
     const costs = entry * (definition.feeBps + definition.slippageBps) / 10_000, pnl = (side === "LONG" ? exit - entry : entry - exit) - costs;
-    trades.push({ tradeKey: deterministicDigest({ strategy: definition.strategyId, version: definition.version, candle: entryCandle.id }), side, setupAt: entryCandle.closedAt, enteredAt: entryCandle.closedAt, exitedAt: exitCandle.closedAt, entry, stop, target, exit, outcome, rMultiple: pnl / risk, mfeR: mfe / risk, maeR: -mae / risk, holdMinutes: Math.max(0, (Date.parse(exitCandle.closedAt) - Date.parse(entryCandle.closedAt)) / 60_000), evidenceRefs: [entryCandle.id, exitCandle.id], session: context.marketSession, weekday: context.weekday, regime: regimeAt(entryCandle.closedAt) });
+    trades.push({ tradeKey: deterministicDigest({ strategy: definition.strategyId, version: definition.version, candle: entryCandle.id }), side, setupAt: entryCandle.closedAt, enteredAt: entryCandle.closedAt, exitedAt: exitCandle.closedAt, entry, stop, target, exit, outcome, rMultiple: pnl / risk, mfeR: mfe / risk, maeR: -mae / risk, holdMinutes: Math.max(0, (Date.parse(exitCandle.closedAt) - Date.parse(entryCandle.closedAt)) / 60_000), evidenceRefs: [entryCandle.id, exitCandle.id], session: context.marketSession, weekday: context.weekday, regime: regimeAt(entryCandle.closedAt), entryHour: context.localExchangeTime.slice(0, 2), volatilityBucket: "UNKNOWN" });
     index = candles.indexOf(exitCandle);
   }
   return trades;
 }
 
-function segmentPerformance(trades: StrategyTrade[], minimum: number) { const dimensions = ["weekday", "session", "regime"] as const; return dimensions.flatMap(dimension => [...new Set(trades.map(item => item[dimension]))].sort().map(value => { const group = trades.filter(item => item[dimension] === value), enough = group.length >= minimum; return { dimension, value, sampleSize: group.length, status: enough ? "AVAILABLE" : "INSUFFICIENT_DATA", winRate: enough ? group.filter(item => item.rMultiple > 0).length / group.length * 100 : null, averageR: enough ? group.reduce((sum, item) => sum + item.rMultiple, 0) / group.length : null }; })); }
+function openingRangeBreakoutTrades(definition: StrategyDefinition, candles: MarketCandle[], regimeAt: (at: string) => string) {
+  const rangeMinutes = definition.openingRangeMinutes ?? 15, cutoffMinutes = definition.entryCutoffMinutes ?? 60;
+  const contexts = candles.map(candle => marketTimeContext(candle.closedAt, definition.exchangeTimeZone, definition.sessionWindows));
+  const zone = definition.sessionWindows.find(window => window.session === definition.allowedSession)?.timeZone ?? definition.exchangeTimeZone;
+  const dates = [...new Set(candles.map(candle => sessionDate(candle.closedAt, zone)))].sort();
+  const trades: StrategyTrade[] = []; let setupCount = 0;
+  for (const date of dates) {
+    const indices = candles.map((candle, index) => ({ candle, index, context: contexts[index] })).filter(item => item.context.marketSession === definition.allowedSession && sessionDate(item.candle.closedAt, zone) === date);
+    const range = indices.filter(item => item.context.minutesSinceOpen !== null && item.context.minutesSinceOpen! > 0 && item.context.minutesSinceOpen! <= rangeMinutes);
+    if (!range.length) continue;
+    const rangeHigh = Math.max(...range.map(item => item.candle.high)), rangeLow = Math.min(...range.map(item => item.candle.low));
+    const rangeVolume = range.map(item => item.candle.volume).filter((value): value is number => value !== null && value > 0);
+    const baselineVolume = rangeVolume.length === range.length ? rangeVolume.reduce((sum, value) => sum + value, 0) / rangeVolume.length : null;
+    const afterRange = indices.filter(item => item.context.minutesSinceOpen !== null && item.context.minutesSinceOpen! > rangeMinutes && item.context.minutesSinceOpen! <= cutoffMinutes);
+    for (let candidateIndex = 0; candidateIndex < afterRange.length; candidateIndex++) {
+      const breakout = afterRange[candidateIndex], side = breakout.candle.close > rangeHigh ? "LONG" as const : breakout.candle.close < rangeLow ? "SHORT" as const : null;
+      if (!side) continue;
+      const volumeMultiple = definition.minimumBreakoutVolumeMultiple ?? 0;
+      if (volumeMultiple > 0 && (baselineVolume === null || breakout.candle.volume === null || breakout.candle.volume < baselineVolume * volumeMultiple)) continue;
+      if (definition.requireVwapConfirmation) { const throughBreakout = indices.filter(item => item.index <= breakout.index); const volume = throughBreakout.reduce((sum, item) => sum + (item.candle.volume ?? 0), 0); if (!(volume > 0)) continue; const vwap = throughBreakout.reduce((sum, item) => sum + typical(item.candle) * (item.candle.volume ?? 0), 0) / volume; if (side === "LONG" ? breakout.candle.close <= vwap : breakout.candle.close >= vwap) continue; }
+      setupCount++;
+      let entryItem = breakout;
+      if (definition.requireRetest) {
+        const tolerance = definition.retestToleranceBps ?? 5, level = side === "LONG" ? rangeHigh : rangeLow;
+        const retestCandidates = afterRange.slice(candidateIndex + 1, candidateIndex + 1 + (definition.retestMaxCandles ?? 6));
+        const retest = retestCandidates.find(item => side === "LONG" ? item.candle.low <= level * (1 + tolerance / 10_000) && item.candle.high >= level * (1 - tolerance / 10_000) && item.candle.close > level : item.candle.high >= level * (1 - tolerance / 10_000) && item.candle.low <= level * (1 + tolerance / 10_000) && item.candle.close < level);
+        if (!retest) break; entryItem = retest;
+      }
+      const entry = entryItem.candle.close, rawStop = side === "LONG" ? entryItem.candle.low : entryItem.candle.high;
+      const stop = side === "LONG" ? rawStop * (1 - definition.stopBufferBps / 10_000) : rawStop * (1 + definition.stopBufferBps / 10_000), risk = Math.abs(entry - stop);
+      if (!(risk > 0)) continue;
+      const target = side === "LONG" ? entry + risk * (definition.targetR ?? 2) : entry - risk * (definition.targetR ?? 2);
+      const path = indices.filter(item => item.index > entryItem.index);
+      let exitItem = path.at(-1) ?? entryItem, exit = exitItem.candle.close, outcome: StrategyTrade["outcome"] = "TIME_EXIT", mfe = 0, mae = 0;
+      for (const next of path) { mfe = Math.max(mfe, side === "LONG" ? next.candle.high - entry : entry - next.candle.low); mae = Math.max(mae, side === "LONG" ? entry - next.candle.low : next.candle.high - entry); const stopHit = side === "LONG" ? next.candle.low <= stop : next.candle.high >= stop, targetHit = side === "LONG" ? next.candle.high >= target : next.candle.low <= target; if (stopHit || targetHit) { outcome = stopHit ? "LOSS" : "WIN"; exit = stopHit ? stop : target; exitItem = next; break; } }
+      const costs = entry * (definition.feeBps + definition.slippageBps) / 10_000, pnl = (side === "LONG" ? exit - entry : entry - exit) - costs;
+      const rangePct = (rangeHigh - rangeLow) / Math.max(0.0000001, (rangeHigh + rangeLow) / 2) * 100, volatilityBucket = rangePct < 0.5 ? "LOW" : rangePct < 1.5 ? "MEDIUM" : "HIGH";
+      trades.push({ tradeKey: deterministicDigest({ strategy: definition.strategyId, version: definition.version, breakout: breakout.candle.id, entry: entryItem.candle.id }), side, setupAt: breakout.candle.closedAt, enteredAt: entryItem.candle.closedAt, exitedAt: exitItem.candle.closedAt, entry, stop, target, exit, outcome, rMultiple: pnl / risk, mfeR: mfe / risk, maeR: -mae / risk, holdMinutes: Math.max(0, (Date.parse(exitItem.candle.closedAt) - Date.parse(entryItem.candle.closedAt)) / 60_000), evidenceRefs: [...range.map(item => item.candle.id), breakout.candle.id, entryItem.candle.id, exitItem.candle.id], session: entryItem.context.marketSession, weekday: entryItem.context.weekday, regime: regimeAt(entryItem.candle.closedAt), entryHour: entryItem.context.localExchangeTime.slice(0, 2), volatilityBucket });
+      break;
+    }
+  }
+  return { trades, setupCount };
+}
+
+function segmentPerformance(trades: StrategyTrade[], minimum: number) { const dimensions = ["weekday", "session", "regime", "side", "entryHour", "volatilityBucket"] as const; return dimensions.flatMap(dimension => [...new Set(trades.map(item => item[dimension]))].sort().map(value => { const group = trades.filter(item => item[dimension] === value), enough = group.length >= minimum; return { dimension, value, sampleSize: group.length, status: enough ? "AVAILABLE" : "INSUFFICIENT_DATA", winRate: enough ? group.filter(item => item.rMultiple > 0).length / group.length * 100 : null, averageR: enough ? group.reduce((sum, item) => sum + item.rMultiple, 0) / group.length : null }; })); }
 function latestPriorReference(refs: Map<string, { high: number; low: number; ids: string[] }>, at: string) { const key = [...refs.keys()].filter(value => value < at.slice(0, 10)).sort().at(-1); return key ? { key, range: refs.get(key)! } : null; }
 function sessionDate(at: string, timeZone: string) { const values = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date(at)).map(item => [item.type, item.value])); return `${values.year}-${values.month}-${values.day}`; }
 function emaSeries(values: number[], period: number) { const result: Array<number | null> = values.map(() => null); if (values.length < period) return result; const multiplier = 2 / (period + 1); let current = values.slice(0, period).reduce((sum, value) => sum + value, 0) / period; result[period - 1] = current; for (let index = period; index < values.length; index++) { current = (values[index] - current) * multiplier + current; result[index] = current; } return result; }
-function validateDefinition(definition: StrategyDefinition) { if (definition.version < 1 || !definition.strategyId || definition.minimumSampleSize < 1) throw new Error("INVALID_STRATEGY_DEFINITION"); if (definition.stopBufferBps < 0 || definition.feeBps < 0 || definition.slippageBps < 0) throw new Error("INVALID_STRATEGY_COST_OR_RISK"); if (definition.setupType === "EMA_VWAP_MOMENTUM" && (!(definition.fastEmaPeriod && definition.slowEmaPeriod) || definition.fastEmaPeriod >= definition.slowEmaPeriod || definition.targetPolicy !== "FIXED_R")) throw new Error("INVALID_EMA_VWAP_DEFINITION"); }
+function typical(candle: MarketCandle) { return (candle.high + candle.low + candle.close) / 3; }
+function validateDefinition(definition: StrategyDefinition) { if (definition.version < 1 || !definition.strategyId || definition.minimumSampleSize < 1) throw new Error("INVALID_STRATEGY_DEFINITION"); if (definition.stopBufferBps < 0 || definition.feeBps < 0 || definition.slippageBps < 0) throw new Error("INVALID_STRATEGY_COST_OR_RISK"); if (definition.setupType === "EMA_VWAP_MOMENTUM" && (!(definition.fastEmaPeriod && definition.slowEmaPeriod) || definition.fastEmaPeriod >= definition.slowEmaPeriod || definition.targetPolicy !== "FIXED_R")) throw new Error("INVALID_EMA_VWAP_DEFINITION"); if (definition.setupType === "OPENING_RANGE_BREAKOUT" && (!(definition.openingRangeMinutes && definition.openingRangeMinutes > 0) || definition.targetPolicy !== "FIXED_R" || !(definition.targetR && definition.targetR > 0) || (definition.entryCutoffMinutes ?? 0) <= definition.openingRangeMinutes)) throw new Error("INVALID_ORB_DEFINITION"); }
 
 export const ASIA_NY_SWEEP_REVERSAL_V1: StrategyDefinition = { strategyId: "asia-ny-sweep-reversal", version: 1, name: "Asia / New York High-Low Sweep Reversal", market: "XAUUSD", timeframe: "5m", setupType: "SESSION_SWEEP_REVERSAL", exchangeTimeZone: "UTC", referenceSession: "NEW_YORK", allowedSession: "ASIA", sessionWindows: [
   { session: "ASIA", timeZone: "Asia/Tokyo", openMinute: 9 * 60, closeMinute: 17 * 60 },
@@ -106,3 +154,54 @@ export const ASIA_NY_SWEEP_REVERSAL_V1: StrategyDefinition = { strategyId: "asia
 ], rejectionCloseInside: true, stopBufferBps: 2, targetPolicy: "OPPOSITE_REFERENCE_LEVEL", feeBps: 1, slippageBps: 2, minimumSampleSize: MIN_STRATEGY_SAMPLE_SIZE };
 
 export const EMA_VWAP_MOMENTUM_V1: StrategyDefinition = { strategyId: "ema-vwap-momentum", version: 1, name: "EMA 9/20 + VWAP Momentum", market: "GENERIC", timeframe: "5m", setupType: "EMA_VWAP_MOMENTUM", exchangeTimeZone: "America/New_York", allowedSession: "REGULAR", sessionWindows: [{ session: "REGULAR", timeZone: "America/New_York", openMinute: 9 * 60 + 30, closeMinute: 16 * 60 }], rejectionCloseInside: false, stopBufferBps: 2, targetPolicy: "FIXED_R", targetR: 2, fastEmaPeriod: 9, slowEmaPeriod: 20, feeBps: 1, slippageBps: 2, minimumSampleSize: MIN_STRATEGY_SAMPLE_SIZE };
+
+const US_REGULAR_SESSION: SessionWindow[] = [{ session: "REGULAR", timeZone: "America/New_York", openMinute: 9 * 60 + 30, closeMinute: 16 * 60 }];
+const ORB_RETEST_BASE = {
+  market: "US_STOCKS", timeframe: "5m", setupType: "OPENING_RANGE_BREAKOUT" as const,
+  exchangeTimeZone: "America/New_York", allowedSession: "REGULAR" as const, sessionWindows: US_REGULAR_SESSION,
+  rejectionCloseInside: false, stopBufferBps: 5, targetPolicy: "FIXED_R" as const, targetR: 2,
+  breakoutConfirmation: "CLOSE" as const, requireRetest: true, retestToleranceBps: 10, retestMaxCandles: 6,
+  entryCutoffMinutes: 60, minimumBreakoutVolumeMultiple: 1.5, requireVwapConfirmation: true,
+  feeBps: 1, slippageBps: 2, minimumSampleSize: MIN_STRATEGY_SAMPLE_SIZE,
+};
+export const ORB_RETEST_5M_V1: StrategyDefinition = { ...ORB_RETEST_BASE, strategyId: "orb-retest-5m", version: 1, name: "Opening Range Breakout · 5m Retest", openingRangeMinutes: 5 };
+export const ORB_RETEST_15M_V1: StrategyDefinition = { ...ORB_RETEST_BASE, strategyId: "orb-retest-15m", version: 1, name: "Opening Range Breakout · 15m Retest", openingRangeMinutes: 15 };
+export const ORB_RETEST_30M_V1: StrategyDefinition = { ...ORB_RETEST_BASE, strategyId: "orb-retest-30m", version: 1, name: "Opening Range Breakout · 30m Retest", openingRangeMinutes: 30, entryCutoffMinutes: 120 };
+export const ORB_DIRECT_15M_V1: StrategyDefinition = { ...ORB_RETEST_BASE, strategyId: "orb-direct-15m", version: 1, name: "Opening Range Breakout · 15m Direct", openingRangeMinutes: 15, requireRetest: false };
+
+const EMA_VWAP_BASE = { ...EMA_VWAP_MOMENTUM_V1, version: 1 };
+export const EMA_VWAP_FAST_V1: StrategyDefinition = { ...EMA_VWAP_BASE, strategyId: "ema-vwap-fast", name: "EMA 5/13 + VWAP Momentum", fastEmaPeriod: 5, slowEmaPeriod: 13 };
+export const EMA_VWAP_SLOW_V1: StrategyDefinition = { ...EMA_VWAP_BASE, strategyId: "ema-vwap-slow", name: "EMA 20/50 + VWAP Trend", fastEmaPeriod: 20, slowEmaPeriod: 50 };
+
+const SWEEP_BASE = { ...ASIA_NY_SWEEP_REVERSAL_V1, market: "XAUUSD" };
+export const LONDON_PRIOR_NY_SWEEP_V1: StrategyDefinition = { ...SWEEP_BASE, strategyId: "london-prior-ny-sweep", name: "London / Prior New York Sweep Reversal", allowedSession: "LONDON", sessionWindows: [
+  { session: "LONDON", timeZone: "Europe/London", openMinute: 8 * 60, closeMinute: 16 * 60 + 30 },
+  { session: "NEW_YORK", timeZone: "America/New_York", openMinute: 8 * 60, closeMinute: 17 * 60 },
+] };
+export const NEW_YORK_PRIOR_ASIA_SWEEP_V1: StrategyDefinition = { ...SWEEP_BASE, strategyId: "new-york-prior-asia-sweep", name: "New York / Prior Asia Sweep Reversal", referenceSession: "ASIA", allowedSession: "NEW_YORK", sessionWindows: [
+  { session: "ASIA", timeZone: "Asia/Tokyo", openMinute: 9 * 60, closeMinute: 17 * 60 },
+  { session: "NEW_YORK", timeZone: "America/New_York", openMinute: 8 * 60, closeMinute: 17 * 60 },
+] };
+
+export const TOP_TEN_RESEARCH_STRATEGIES: readonly StrategyDefinition[] = [
+  ORB_RETEST_15M_V1, ORB_RETEST_5M_V1, EMA_VWAP_MOMENTUM_V1, ASIA_NY_SWEEP_REVERSAL_V1, ORB_RETEST_30M_V1,
+  ORB_DIRECT_15M_V1, EMA_VWAP_FAST_V1, EMA_VWAP_SLOW_V1, LONDON_PRIOR_NY_SWEEP_V1, NEW_YORK_PRIOR_ASIA_SWEEP_V1,
+];
+
+export const STRATEGY_RESEARCH_CATALOG = TOP_TEN_RESEARCH_STRATEGIES.map((definition, index) => ({
+  definition,
+  researchPriority: index + 1,
+  researchStatus: "UNPROVEN" as const,
+  rationale: [
+    "15-minute opening range with volume, VWAP and retest confirmation.",
+    "Fast opening-range variant to measure early signal versus noise.",
+    "Short-term EMA crossover confirmed by session VWAP.",
+    "Asia-session rejection after sweeping the prior New York range.",
+    "Wider opening range intended to reduce false breaks.",
+    "Direct-breakout control variant without retest confirmation.",
+    "Faster EMA momentum variant for responsiveness testing.",
+    "Slower EMA trend variant for turnover and noise testing.",
+    "London-session rejection after sweeping the prior New York range.",
+    "New York-session rejection after sweeping the prior Asia range.",
+  ][index],
+}));
