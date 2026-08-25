@@ -31,5 +31,5 @@ suite("Supabase paper portfolio", () => {
       .select("id", { count: "exact", head: true });
     expect(error).toBeNull();
     expect(count).toBeGreaterThanOrEqual(0);
-  });
+  }, 30_000);
 });

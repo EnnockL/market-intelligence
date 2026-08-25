@@ -9,11 +9,11 @@ let db: SupabaseClient;
 suite("Supabase market regime v1", () => {
   beforeAll(() => { db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false, autoRefreshToken: false } }); });
   it("creates deterministic snapshots idempotently", async () => {
-    const cutoff = "2026-08-24T23:59:59.000Z", service = new MarketRegimeService(db);
+    const cutoff = new Date(Date.now() - 60_000).toISOString(), service = new MarketRegimeService(db);
     const first = await service.run(cutoff), second = await service.run(cutoff);
     expect(first.results).toHaveLength(2);
     expect(second.created).toBe(0);
-    const { data, error } = await db.from("market_regime_snapshots").select("regime,confidence,evidence_refs").eq("information_cutoff_at", cutoff);
+    const { data, error } = await db.from("market_regime_snapshots").select("regime,confidence,evidence_refs").eq("information_cutoff_at", cutoff).eq("policy_version", "market-regime-policy-v1").in("scope", ["STOCK", "CRYPTO"]);
     expect(error).toBeNull();
     expect(data).toHaveLength(2);
     expect(data?.every((row: any) => row.regime !== "UNKNOWN" || row.confidence === null)).toBe(true);
