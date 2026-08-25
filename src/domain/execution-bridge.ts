@@ -1,0 +1,8 @@
+import { deterministicDigest } from "./events";
+export const EXECUTION_BRIDGE_POLICY_VERSION="execution-bridge-policy-v1";
+export interface BridgeEvidence{eligibilityDecision:"ELIGIBLE"|"REJECTED"|"DATA_BLOCKED";proposalExpiresAt:string;riskStatus:"KNOWN"|"UNKNOWN";riskAvailableAt:string|null;accountObservedAt:string|null;cutoffAt:string;maxAccountAgeMs:number}
+export function evaluateBridgeReadiness(input:BridgeEvidence){
+ const age=input.accountObservedAt===null?null:Date.parse(input.cutoffAt)-Date.parse(input.accountObservedAt),requirements=[req("ELIGIBILITY",input.eligibilityDecision==="ELIGIBLE"?"PASS":"FAIL",input.eligibilityDecision,"ELIGIBLE"),req("PROPOSAL_ACTIVE",Date.parse(input.proposalExpiresAt)>Date.parse(input.cutoffAt)?"PASS":"FAIL",input.proposalExpiresAt,`>${input.cutoffAt}`),req("RISK_LEDGER",input.riskStatus==="KNOWN"?"PASS":"UNKNOWN",input.riskStatus,"KNOWN"),req("RISK_POINT_IN_TIME",input.riskAvailableAt===null?"UNKNOWN":Date.parse(input.riskAvailableAt)<=Date.parse(input.cutoffAt)?"PASS":"FAIL",input.riskAvailableAt,`<=${input.cutoffAt}`),req("ACCOUNT_FRESHNESS",age===null?"UNKNOWN":age>=0&&age<=input.maxAccountAgeMs?"PASS":"FAIL",age,`0-${input.maxAccountAgeMs}ms`)];
+ const decision=requirements.some(x=>x.status==="FAIL")?"BLOCKED"as const:requirements.some(x=>x.status==="UNKNOWN")?"DATA_BLOCKED"as const:"READY"as const,result={policyVersion:EXECUTION_BRIDGE_POLICY_VERSION,decision,requirements};return{...result,resultHash:deterministicDigest({input,result})};
+}
+function req(code:string,status:"PASS"|"FAIL"|"UNKNOWN",observedValue:unknown,requiredValue:unknown){return{code,status,observedValue,requiredValue,blockerCode:status==="PASS"?null:`${code}_${status}`}}
