@@ -1,0 +1,1 @@
+import type{SupabaseClient}from"@supabase/supabase-js";import type{WorkerEnv}from"@/lib/env";import{ExecutionPipelineService}from"@/services/execution-pipeline/service";export function runExecutionPipeline(db:SupabaseClient,env:WorkerEnv){return new ExecutionPipelineService(db,env).run()}
