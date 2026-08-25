@@ -18,9 +18,9 @@ export class IngestionRepository {
   constructor(private readonly db: SupabaseClient) {}
 
   async trackedWallets() {
-    const { data, error } = await this.db.from("wallets").select("id,address,metadata").eq("is_tracked", true);
+    const { data, error } = await this.db.from("wallets").select("id,address,metadata").eq("is_tracked", true).order("created_at", { ascending: true });
     if (error) throw error;
-    return (data ?? []) as Array<{ id: string; address: string; metadata: { last_signature?: string; backfill_before?: string; backfill_complete?: boolean } | null }>;
+    return (data ?? []) as Array<{ id: string; address: string; metadata: { last_signature?: string; backfill_before?: string; backfill_complete?: boolean; backfill_synced_at?: string } | null }>;
   }
 
   async walletDiscoverySeeds(configuredSeeds: string[], limit = 10) {
