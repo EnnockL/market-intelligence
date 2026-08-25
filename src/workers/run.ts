@@ -11,6 +11,7 @@ import { runWalletPnl } from "./wallet-pnl";
 import { runWalletEvidence } from "./wallet-evidence";
 import { BirdeyeHistoricalLiquidityProvider } from "@/services/liquidity/birdeye-liquidity-provider";
 import { BirdeyeTokenRiskProvider } from "@/services/token-risk/birdeye-token-risk-provider";
+import { FallbackTokenRiskProvider, SolanaRpcTokenRiskProvider } from "@/services/token-risk/solana-rpc-token-risk-provider";
 import { DexScreenerProvider } from "@/services/crypto-market/dexscreener-provider";
 import { CoinGeckoHistoricalProvider } from "@/services/crypto-market/coingecko-provider";
 import { GeckoTerminalProvider } from "@/services/crypto-market/geckoterminal-provider";
@@ -46,6 +47,19 @@ import { runMetaAgent } from "./meta-agent";
 import { runMetaReadiness } from "./meta-readiness";
 import { runStrategyPatternLab } from "./strategy-pattern-lab";
 import { runCandleIngestion } from "./candle-ingestion";
+import { runAIExplanations } from "./ai-explanations";
+import { runStrategyIntelligence } from "./strategy-intelligence";
+import { OpenAIResponsesProvider } from "@/services/ai/openai-provider";
+import { runExecution } from "./execution";
+import { runTradeEligibility } from "./trade-eligibility";
+import { runAccountState } from "./account-state";
+import { runExecutionBridge } from "./execution-bridge";
+import { runTradeProposalProducer } from "./trade-proposal-producer";
+import { runExecutionPipeline } from "./execution-pipeline";
+import { runPoolDiscovery } from "./pool-discovery";
+import { CompositePoolDiscoveryProvider } from "@/services/pool-discovery/composite-provider";
+import { GeckoTerminalPoolDiscoveryProvider } from "@/services/pool-discovery/geckoterminal-provider";
+import { DexScreenerPoolDiscoveryProvider } from "@/services/pool-discovery/dexscreener-provider";
 import { loadEnvConfig } from "@next/env";
 
 loadEnvConfig(process.cwd());
@@ -57,6 +71,7 @@ async function main() {
       "stocks",
       "wallets",
       "wallet-discovery",
+      "pool-discovery",
       "crypto-market",
       "wallet-pnl",
       "wallet-evidence",
@@ -90,6 +105,14 @@ async function main() {
       "meta-readiness",
       "strategy-pattern-lab",
       "candle-ingestion",
+      "ai-explanations",
+      "strategy-intelligence",
+      "execution",
+      "trade-eligibility",
+      "account-state",
+      "execution-bridge",
+      "trade-proposal-producer",
+      "execution-pipeline",
     ].includes(job)
   )
     throw new Error("Unknown worker job");
@@ -108,10 +131,14 @@ async function main() {
     stockSymbols,
     discoverySeeds,
   };
-  const result =
+  const result = job === "pool-discovery" ? await runPoolDiscovery(db, repository, new CompositePoolDiscoveryProvider([new GeckoTerminalPoolDiscoveryProvider(), new DexScreenerPoolDiscoveryProvider()])) : job === "execution-pipeline" ? await runExecutionPipeline(db,env) : job === "trade-proposal-producer" ? await runTradeProposalProducer(db) : job === "execution-bridge" ? await runExecutionBridge(db,env) : job === "account-state" ? await runAccountState(db,env) : job === "trade-eligibility" ? await runTradeEligibility(db) : job === "execution" ? await runExecution(db,env) : job === "strategy-intelligence" ? await runStrategyIntelligence(db) : job === "ai-explanations"
+    ? env.OPENAI_API_KEY
+      ? await runAIExplanations(db, new OpenAIResponsesProvider(env.OPENAI_API_KEY, env.OPENAI_MODEL))
+      : (() => { throw new Error("OPENAI_API_KEY is required for ai-explanations"); })()
+    :
     job === "candle-ingestion" ? await runCandleIngestion(db,env.FINNHUB_API_KEY) : job === "strategy-pattern-lab" ? await runStrategyPatternLab(db) : job === "meta-readiness" ? await runMetaReadiness(db,repository) : job === "meta-agent" ? await runMetaAgent(db,repository) : job === "market-regime" ? await runMarketRegime(db,repository) : job === "agent-performance" ? await runAgentPerformance(db,repository) : job === "consensus" ? await runConsensus(db,repository) : job === "catalyst-classification" ? await runCatalystClassification(db,repository) : job === "news-ingestion" ? await runNewsIngestion(db,repository,new FinnhubNewsProvider(env.FINNHUB_API_KEY),stockSymbols) : job === "specialist-agents" ? await runSpecialistAgents(db, repository) : job === "forecast-scheduler" ? await runForecastScheduler(db, repository,{provider:new FinnhubNewsProvider(env.FINNHUB_API_KEY),symbols:stockSymbols},schedulerIngestion) : job === "forecast-performance" ? await runForecastPerformance(db, repository) : job === "baseline-forecast" ? await runBaselineForecast(db, repository) : job === "expert-knowledge" ? await runExpertKnowledge(db, repository) : job === "forecast-catalyst" ? await runForecastCatalyst(db, repository) : job === "historical-replay" ? await runHistoricalReplay(db, repository) : job === "simulation" ? await runSimulation(db, repository) : job === "data-gap-closure"
       ? env.BIRDEYE_API_KEY
-        ? await runDataGapClosure(db, repository, new BirdeyeHistoricalLiquidityProvider(env.BIRDEYE_API_KEY), new BirdeyeTokenRiskProvider(env.BIRDEYE_API_KEY), env.WALLET_EVIDENCE_MAX_TOKENS)
+        ? await runDataGapClosure(db, repository, new BirdeyeHistoricalLiquidityProvider(env.BIRDEYE_API_KEY), new FallbackTokenRiskProvider(new BirdeyeTokenRiskProvider(env.BIRDEYE_API_KEY),new SolanaRpcTokenRiskProvider(env.SOLANA_RPC_URL)), env.WALLET_EVIDENCE_MAX_TOKENS)
         : (()=>{throw new Error("BIRDEYE_API_KEY is required for data-gap-closure")})()
       : job === "qualification"
       ? await runQualification(db, repository)

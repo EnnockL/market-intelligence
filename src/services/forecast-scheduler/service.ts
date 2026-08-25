@@ -24,6 +24,20 @@ import { runMarketEvents } from "@/workers/market-events";
 import { runFastFlow } from "@/workers/fast-flow";
 import { runJackpotCollector } from "@/workers/jackpot-collector";
 import { runCandleIngestion } from "@/workers/candle-ingestion";
+import { OpenAIResponsesProvider } from "@/services/ai/openai-provider";
+import { AIExplanationService } from "@/services/ai/explanation-service";
+import { ExecutionPipelineService } from "@/services/execution-pipeline/service";
+import { getWorkerEnv } from "@/lib/env";
+import { DataGapClosureService } from "@/services/data-gap-closure/service";
+import { BirdeyeHistoricalLiquidityProvider } from "@/services/liquidity/birdeye-liquidity-provider";
+import { BirdeyeTokenRiskProvider } from "@/services/token-risk/birdeye-token-risk-provider";
+import { FallbackTokenRiskProvider, SolanaRpcTokenRiskProvider } from "@/services/token-risk/solana-rpc-token-risk-provider";
+import { QualificationDiagnosticsService } from "@/services/qualification/service";
+import { TradeProposalProducerService } from "@/services/trade-proposal-producer/service";
+import { CompositePoolDiscoveryProvider } from "@/services/pool-discovery/composite-provider";
+import { GeckoTerminalPoolDiscoveryProvider } from "@/services/pool-discovery/geckoterminal-provider";
+import { DexScreenerPoolDiscoveryProvider } from "@/services/pool-discovery/dexscreener-provider";
+import { runPoolDiscovery } from "@/workers/pool-discovery";
 
 export interface SchedulerNewsConfig { provider: NewsProvider; symbols: string[] }
 export interface SchedulerIngestionConfig { stockProvider: MarketDataProvider; blockchainProvider: BlockchainDataProvider; cryptoProvider: CryptoMarketDataProvider; stockSymbols: string[]; discoverySeeds: string[] }
@@ -84,6 +98,7 @@ export class ForecastSchedulerService {
 
   private async execute(job: any, now: string): Promise<any> {
     const repo = new IngestionRepository(this.db);
+    if (job.job_type === "POOL_DISCOVERY") return runPoolDiscovery(this.db, repo, new CompositePoolDiscoveryProvider([new GeckoTerminalPoolDiscoveryProvider(), new DexScreenerPoolDiscoveryProvider()]), Number(job.rate_limit_budget?.maxPools ?? 20));
     if (job.job_type === "STOCK_INGESTION") { if (!this.ingestion) throw new Error("INGESTION_PROVIDERS_NOT_CONFIGURED"); return runStockIngestion(this.ingestion.stockProvider, repo, this.ingestion.stockSymbols); }
     if (job.job_type === "WALLET_INGESTION") { if (!this.ingestion) throw new Error("INGESTION_PROVIDERS_NOT_CONFIGURED"); return runWalletIngestion(this.ingestion.blockchainProvider, repo); }
     if (job.job_type === "WALLET_DISCOVERY") { if (!this.ingestion) throw new Error("INGESTION_PROVIDERS_NOT_CONFIGURED"); return runWalletDiscovery(this.ingestion.blockchainProvider, repo, this.ingestion.discoverySeeds); }
@@ -105,7 +120,17 @@ export class ForecastSchedulerService {
     if (job.job_type === "AGENT_PERFORMANCE") return new AgentPerformanceService(this.db).run(now);
     if (job.job_type === "MARKET_REGIME") return new MarketRegimeService(this.db).run(now);
     if (job.job_type === "META_AGENT") return new MetaAgentService(this.db).run(now);
+    if (job.job_type === "AI_EXPLANATION") { if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY_REQUIRED"); const limit = Math.max(1, Math.min(25, Number(job.rate_limit_budget?.maxExplanationsPerRun ?? 5))); return new AIExplanationService(this.db, new OpenAIResponsesProvider(process.env.OPENAI_API_KEY, process.env.OPENAI_MODEL ?? "gpt-5.4-mini")).run(now, limit); }
     if (job.job_type === "META_READINESS") return new MetaReadinessService(this.db).run(now);
+    if (job.job_type === "DATA_GAP_CLOSURE") {
+      const env = getWorkerEnv();
+      if (!env.BIRDEYE_API_KEY) throw new Error("BIRDEYE_API_KEY_REQUIRED");
+      const risk = new FallbackTokenRiskProvider(new BirdeyeTokenRiskProvider(env.BIRDEYE_API_KEY), new SolanaRpcTokenRiskProvider(env.SOLANA_RPC_URL));
+      return new DataGapClosureService(this.db, new BirdeyeHistoricalLiquidityProvider(env.BIRDEYE_API_KEY), risk, repo).run(env.WALLET_EVIDENCE_MAX_TOKENS, now);
+    }
+    if (job.job_type === "QUALIFICATION") return new QualificationDiagnosticsService(this.db).run(now);
+    if (job.job_type === "TRADE_PROPOSAL_PRODUCER") return new TradeProposalProducerService(this.db).run(now);
+    if (job.job_type === "EXECUTION_PIPELINE") return new ExecutionPipelineService(this.db, getWorkerEnv()).run();
     if (job.job_type === "NEWS_INGESTION") { if (!this.news) throw new Error("NEWS_PROVIDER_NOT_CONFIGURED"); const limit = Math.max(1, Math.min(100, Number(job.rate_limit_budget?.maxArticlesPerSymbol ?? 50))); return new NewsIngestionService(this.db, this.news.provider).run(this.news.symbols, now, limit); }
     throw new Error(`UNKNOWN_SCHEDULED_JOB:${job.job_type}`);
   }

@@ -8,7 +8,11 @@ import { DexScreenerProvider } from "@/services/crypto-market/dexscreener-provid
 import { GeckoTerminalProvider } from "@/services/crypto-market/geckoterminal-provider";
 import { FreeCryptoMarketProvider } from "@/services/crypto-market/free-market-provider";
 export const runtime = "nodejs";
-export const maxDuration = 60;
+// Some bounded ingestion jobs make several upstream provider calls before they
+// can persist their cursor. Pro deployments allow a longer function window;
+// keep an explicit scheduler deadline below it so the request can finish and
+// release its database lease cleanly.
+export const maxDuration = 300;
 export async function GET(request: NextRequest) {
   const secret = process.env.CRON_SECRET, authorization = request.headers.get("authorization");
   if (!secret || authorization !== `Bearer ${secret}`) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -25,8 +29,10 @@ export async function GET(request: NextRequest) {
     discoverySeeds,
   } : undefined;
   const startedAt = Date.now();
-  const maxRuntimeMs = Math.max(5_000, Math.min(50_000, Number(process.env.SCHEDULER_MAX_RUNTIME_MS ?? 50_000)));
-  const batchLimit = Math.max(1, Math.min(25, Number(process.env.SCHEDULER_BATCH_LIMIT ?? 20)));
+  const maxRuntimeMs = Math.max(5_000, Math.min(240_000, Number(process.env.SCHEDULER_MAX_RUNTIME_MS ?? 240_000)));
+  // One leased job per invocation prevents slow provider jobs from starving
+  // the queue and lets the next minute continue from the persisted cursor.
+  const batchLimit = Math.max(1, Math.min(5, Number(process.env.SCHEDULER_BATCH_LIMIT ?? 1)));
   const service = new ForecastSchedulerService(createServiceClient(), `cron-${crypto.randomUUID()}`, key ? { provider: new FinnhubNewsProvider(key), symbols } : undefined, ingestion, { maxRuntimeMs });
   const jobs = await service.runDue(undefined, batchLimit);
   return NextResponse.json({ scheduler: "forecast-scheduler-v1.4", jobs, durationMs: Date.now() - startedAt, ranAt: new Date().toISOString() });
