@@ -18,4 +18,34 @@ describe("free market provider", () => {
     expect(result.points[0]).toMatchObject({ provider: "geckoterminal", liquidityUsd: 42_000, poolAddress: "gecko-pool" });
     expect(fallback.getCurrent).toHaveBeenCalledOnce();
   });
+
+  it("preserves primary observations when the optional fallback is unavailable", async () => {
+    const primaryPoint = point("dexscreener", null, "dex-pool");
+    const primary = provider(primaryPoint);
+    const fallback = provider(point("geckoterminal", 42_000, "gecko-pool"));
+    vi.mocked(fallback.getCurrent).mockRejectedValueOnce(new Error("rate limited"));
+
+    const result = await new FreeCryptoMarketProvider(primary, fallback).getCurrent(["mint"]);
+
+    expect(result.points).toEqual([primaryPoint]);
+    expect(result.points[0].liquidityUsd).toBeNull();
+  });
+
+  it("bounds public fallback work per ingestion run", async () => {
+    const mints = Array.from({ length: 12 }, (_, index) => `mint-${index}`);
+    const primary = provider(point("dexscreener", null, null));
+    vi.mocked(primary.getCurrent).mockResolvedValueOnce({
+      points: mints.map((mintAddress) => ({ ...point("dexscreener", null, null), mintAddress })),
+      rateLimit: { remaining: null, resetAt: null },
+    });
+    const fallback = provider(point("geckoterminal", 42_000, "gecko-pool"));
+    vi.mocked(fallback.getCurrent).mockImplementationOnce(async (requested) => ({
+      points: requested.map((mintAddress) => ({ ...point("geckoterminal", 42_000, "gecko-pool"), mintAddress })),
+      rateLimit: { remaining: null, resetAt: null },
+    }));
+
+    await new FreeCryptoMarketProvider(primary, fallback).getCurrent(mints);
+
+    expect(fallback.getCurrent).toHaveBeenCalledWith(mints.slice(0, 5));
+  });
 });
