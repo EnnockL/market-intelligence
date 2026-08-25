@@ -1,1 +1,90 @@
-.page{max-width:1720px;margin:0 auto;padding:24px 40px 80px;color:#f3f5f4}.hero,.panel{border:1px solid #252927;background:#0d0f0e;border-radius:24px}.hero{padding:46px;margin-bottom:24px}.hero small,.panel small{font:700 11px ui-monospace,monospace;letter-spacing:.15em;color:#69dda1}.hero h1{font-size:clamp(42px,6vw,72px);margin:12px 0}.hero p{color:#929996}.panel{padding:28px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:20px}.card{padding:22px;border:1px solid #272b29;border-radius:18px;background:#101211}.card h3{margin:8px 0}.card p{color:#8d9490}.components{display:flex;gap:6px;flex-wrap:wrap}.components span{border:1px solid #303532;border-radius:999px;padding:6px 9px;font:10px ui-monospace,monospace}.pass{color:#69dda1}.fail{color:#ef7777}.unknown{color:#dfbd67}@media(max-width:900px){.page{padding:16px}.grid{grid-template-columns:1fr}}
+.page {
+  max-width: 1720px;
+  margin: 0 auto;
+  padding: 24px 40px 80px;
+  color: #f3f5f4;
+}
+.hero,
+.panel {
+  border: 1px solid #252927;
+  background: #0d0f0e;
+  border-radius: 24px;
+}
+.hero {
+  padding: 46px;
+  margin-bottom: 24px;
+}
+.hero small,
+.panel small {
+  font:
+    700 11px ui-monospace,
+    monospace;
+  letter-spacing: 0.15em;
+  color: #69dda1;
+}
+.hero h1 {
+  font-size: clamp(42px, 6vw, 72px);
+  margin: 12px 0;
+}
+.hero p {
+  color: #929996;
+}
+.panel {
+  padding: 28px;
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-top: 20px;
+}
+.card {
+  padding: 22px;
+  border: 1px solid #272b29;
+  border-radius: 18px;
+  background: #101211;
+}
+.card h3 {
+  margin: 8px 0;
+}
+.card p {
+  color: #8d9490;
+}
+.components {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.components span {
+  border: 1px solid #303532;
+  border-radius: 999px;
+  padding: 6px 9px;
+  font:
+    10px ui-monospace,
+    monospace;
+}
+.pass {
+  color: #69dda1;
+}
+.fail {
+  color: #ef7777;
+}
+.unknown {
+  color: #dfbd67;
+}
+@media (max-width: 900px) {
+  .page {
+    padding: 16px;
+  }
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 600px) {
+  .page { padding: 14px 12px 64px; }
+  .hero { padding: 26px 20px; border-radius: 18px; }
+  .hero h1 { font-size: 42px; line-height: 1; }
+  .panel { padding: 18px; border-radius: 18px; }
+  .grid { gap: 10px; }
+  .card { padding: 18px; border-radius: 14px; }
+}

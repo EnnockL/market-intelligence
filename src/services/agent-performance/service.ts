@@ -21,8 +21,21 @@ interface Group {
   inputIds: string[];
 }
 
+const CONSENSUS_ID_CHUNK_SIZE = 100;
+
 export class AgentPerformanceService {
   constructor(private readonly db: SupabaseClient) {}
+
+  private async fetchByConsensusIds(table: string, consensusIds: string[]): Promise<any[]> {
+    const rows: any[] = [];
+    for (let index = 0; index < consensusIds.length; index += CONSENSUS_ID_CHUNK_SIZE) {
+      const chunk = consensusIds.slice(index, index + CONSENSUS_ID_CHUNK_SIZE);
+      const { data, error } = await this.db.from(table).select("*").in("consensus_id", chunk);
+      if (error) throw error;
+      rows.push(...(data ?? []));
+    }
+    return rows;
+  }
 
   async run(cutoff = new Date().toISOString(), limit = 500) {
     const { data: snapshots, error } = await this.db
@@ -35,12 +48,10 @@ export class AgentPerformanceService {
     const snapshotIds = (snapshots ?? []).map((snapshot: any) => snapshot.id);
     if (!snapshotIds.length) return { snapshots: 0, evaluatedOutcomes: 0, groups: 0, created: 0 };
 
-    const [{ data: opinions, error: opinionError }, { data: overlaps, error: overlapError }] = await Promise.all([
-      this.db.from("consensus_opinions").select("*").in("consensus_id", snapshotIds),
-      this.db.from("consensus_evidence_overlaps").select("*").in("consensus_id", snapshotIds),
+    const [opinions, overlaps] = await Promise.all([
+      this.fetchByConsensusIds("consensus_opinions", snapshotIds),
+      this.fetchByConsensusIds("consensus_evidence_overlaps", snapshotIds),
     ]);
-    if (opinionError) throw opinionError;
-    if (overlapError) throw overlapError;
 
     const groups = new Map<string, Group>();
     let evaluatedOutcomes = 0;
