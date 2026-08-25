@@ -7,7 +7,7 @@ export function JackpotRadar({
   data: Awaited<ReturnType<typeof getJackpotData>>;
 }) {
   return (
-    <section className="radar-panel jackpot-panel">
+    <section className="radar-panel jackpot-panel" id="jackpot">
       <div className="panel-title jackpot-title">
         <div>
           <span className="eyebrow">RESEARCH DATASET</span>
