@@ -1,10 +1,33 @@
 import { describe, expect, it, vi } from "vitest";
-import { runWalletPnl } from "@/workers/wallet-pnl";
+import { runWalletPnl, selectFairEnrichmentBatch } from "@/workers/wallet-pnl";
 import { WALLET_VERIFICATION_POLICY } from "@/domain/wallet-verification";
 import { runWalletEvidence } from "@/workers/wallet-evidence";
 import { ProviderError } from "@/services/market-data/provider";
 
 describe("wallet verification pipeline", () => {
+  it("selects enrichment work fairly across wallets without losing deterministic order", () => {
+    const transactions = [
+      { id: "a-1", wallet_id: "a", occurred_at: "2026-08-01T00:00:00Z" },
+      { id: "a-2", wallet_id: "a", occurred_at: "2026-08-01T00:01:00Z" },
+      { id: "a-3", wallet_id: "a", occurred_at: "2026-08-01T00:02:00Z" },
+      { id: "b-1", wallet_id: "b", occurred_at: "2026-08-01T00:00:30Z" },
+      { id: "c-1", wallet_id: "c", occurred_at: "2026-08-01T00:00:45Z" },
+    ];
+
+    expect(selectFairEnrichmentBatch(transactions, 4).map((row) => row.id)).toEqual([
+      "a-1",
+      "b-1",
+      "c-1",
+      "a-2",
+    ]);
+    expect(selectFairEnrichmentBatch([...transactions].reverse(), 4).map((row) => row.id)).toEqual([
+      "a-1",
+      "b-1",
+      "c-1",
+      "a-2",
+    ]);
+  });
+
   it("keeps the locked verification policy unchanged", () =>
     expect(WALLET_VERIFICATION_POLICY).toEqual({
       version: "wallet-verification-policy-v1",

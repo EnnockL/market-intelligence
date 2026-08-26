@@ -19,9 +19,10 @@ export async function runWalletPnl(
   try {
     const transactions = await repository.walletTransactionsForEnrichment();
     const existing = await repository.enrichedTransactionIds(provider.name);
-    const pending = transactions
-      .filter((transaction) => !existing.has(transaction.id))
-      .slice(0, Math.max(1, Math.min(50, maxTransactions)));
+    const pending = selectFairEnrichmentBatch(
+      transactions.filter((transaction) => !existing.has(transaction.id)),
+      Math.max(1, Math.min(50, maxTransactions)),
+    );
     for (const transaction of pending) {
       try {
         const tokenPoint = await provider.getHistorical({
@@ -94,6 +95,52 @@ export async function runWalletPnl(
     await repository.failRun(runId, error);
     throw error;
   }
+}
+
+/**
+ * Selects persisted transactions round-robin by wallet. A global oldest-first
+ * slice lets one deep historical backfill consume every provider request and
+ * prevents newly tracked wallets from ever receiving verification evidence.
+ * Ordering remains deterministic inside and between wallet queues.
+ */
+export function selectFairEnrichmentBatch<
+  T extends { id: string; wallet_id?: string | null; occurred_at: string },
+>(transactions: T[], limit: number): T[] {
+  const bounded = Math.max(0, Math.floor(limit));
+  if (!bounded || !transactions.length) return [];
+  const queues = new Map<string, T[]>();
+  for (const transaction of transactions) {
+    // Legacy/test rows without a wallet remain independently eligible instead
+    // of being collapsed into one artificial wallet queue.
+    const walletKey = transaction.wallet_id ?? `unknown:${transaction.id}`;
+    const queue = queues.get(walletKey) ?? [];
+    queue.push(transaction);
+    queues.set(walletKey, queue);
+  }
+  for (const queue of queues.values())
+    queue.sort(
+      (left, right) =>
+        left.occurred_at.localeCompare(right.occurred_at) ||
+        left.id.localeCompare(right.id),
+    );
+  const orderedQueues = [...queues.entries()].sort(
+    ([leftWallet, left], [rightWallet, right]) =>
+      left[0].occurred_at.localeCompare(right[0].occurred_at) ||
+      leftWallet.localeCompare(rightWallet),
+  );
+  const selected: T[] = [];
+  for (let depth = 0; selected.length < bounded; depth += 1) {
+    let found = false;
+    for (const [, queue] of orderedQueues) {
+      const transaction = queue[depth];
+      if (!transaction) continue;
+      selected.push(transaction);
+      found = true;
+      if (selected.length === bounded) break;
+    }
+    if (!found) break;
+  }
+  return selected;
 }
 
 function errorText(error: unknown) {
