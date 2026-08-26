@@ -18,9 +18,12 @@ export async function runBacktest(_: LabActionState, formData: FormData): Promis
   const startsAt = `${parsed.data.startsAt}T00:00:00.000Z`, endsAt = `${parsed.data.endsAt}T23:59:59.999Z`;
   if (startsAt > endsAt || Date.parse(endsAt) - Date.parse(startsAt) > 2 * 366 * 86_400_000) return { status: "ERROR", message: "Perioden måste vara 1–732 dagar." };
   const db = createServiceClient();
-  const [definitionResult, assetResult] = await Promise.all([db.from("strategy_definitions").select("definition").eq("id", parsed.data.definitionId).eq("status", "ACTIVE").single(), db.from("assets").select("id,symbol").eq("id", parsed.data.assetId).eq("is_active", true).single()]);
+  const [definitionResult, assetResult] = await Promise.all([db.from("strategy_definitions").select("definition,timeframe").eq("id", parsed.data.definitionId).eq("status", "ACTIVE").single(), db.from("assets").select("id,symbol").eq("id", parsed.data.assetId).eq("is_active", true).single()]);
   if (definitionResult.error || assetResult.error) return { status: "ERROR", message: "Strategin eller asseten är inte tillgänglig." };
   try {
+    const candleCheck = await db.from("market_candles").select("id", { count: "exact", head: true }).eq("asset_id", assetResult.data.id).eq("timeframe", definitionResult.data.timeframe).gte("opened_at", startsAt).lte("closed_at", endsAt).lte("available_at", endsAt);
+    if (candleCheck.error) throw candleCheck.error;
+    if (!candleCheck.count) return { status: "ERROR", message: `${assetResult.data.symbol} saknar ${definitionResult.data.timeframe}-candles i den valda perioden. Välj en konfigurerad asset eller importera dess candle-källa först.` };
     const result = await new StrategyPatternLabService(db).run(definitionResult.data.definition as StrategyDefinition, assetResult.data.id, endsAt, startsAt);
     revalidatePath("/strategy-lab");
     return { status: "SUCCESS", message: `${assetResult.data.symbol}: ${result.evaluation.candleCount} candles, ${result.evaluation.setupCount} setups och ${result.evaluation.tradeCount} trades.` };

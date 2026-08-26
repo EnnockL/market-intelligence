@@ -16,7 +16,8 @@ export function BacktestWorkspace({ definitions, assets, sources }: { definition
         <label>Asset<select name="assetId" required>{assets.map(item => <option key={item.id} value={item.id}>{item.symbol} · {item.kind}</option>)}</select></label>
       </div>
       <div className={styles.dateRow}><label>From<input name="startsAt" type="date" defaultValue={start} required/></label><label>To<input name="endsAt" type="date" defaultValue={today} required/></label></div>
-      <button className={styles.primaryAction} disabled={runPending}>{runPending ? "Running…" : "Run deterministic backtest"}</button><ActionMessage state={runState}/>
+      {!assets.length ? <p className={styles.actionError}>Ingen asset har en aktiv candle-källa. Kontrollera Historical Data nedan.</p> : null}
+      <button className={styles.primaryAction} disabled={runPending || !assets.length}>{runPending ? "Running…" : "Run deterministic backtest"}</button><ActionMessage state={runState}/>
     </form>
     <form action={syncAction} className={styles.controlCard}>
       <div className={styles.cardHeader}><small>DATA IMPORT</small><h3>Sync historical candles</h3><p>Hämta nästa verifierbara datapaket från den konfigurerade providern.</p></div>
