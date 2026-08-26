@@ -49,6 +49,7 @@ import { runPoolDiscovery } from "@/workers/pool-discovery";
 import { runWalletPromotion } from "@/workers/wallet-promotion";
 import { runWalletPnl } from "@/workers/wallet-pnl";
 import { runWalletEvidence } from "@/workers/wallet-evidence";
+import { runWalletClustering } from "@/workers/wallet-clustering";
 
 export interface SchedulerNewsConfig {
   provider: NewsProvider;
@@ -219,6 +220,14 @@ export class ForecastSchedulerService {
     }
     if (job.job_type === "WALLET_PROMOTION")
       return runWalletPromotion(this.db, now);
+    if (job.job_type === "WALLET_CLUSTERING") {
+      const env = getWorkerEnv();
+      return runWalletClustering(
+        this.db,
+        repo,
+        Math.max(2, Math.min(env.WALLET_CLUSTERING_MAX_WALLETS, Number(job.rate_limit_budget?.maxWallets ?? 150))),
+      );
+    }
     if (job.job_type === "WALLET_EVIDENCE") {
       const env = getWorkerEnv();
       if (!env.BIRDEYE_API_KEY) throw new Error("BIRDEYE_API_KEY_REQUIRED");
