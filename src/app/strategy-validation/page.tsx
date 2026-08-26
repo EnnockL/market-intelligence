@@ -1,19 +1,23 @@
 import { createServiceClient } from "@/lib/supabase/server";
+import { ValidationControls } from "./validation-controls";
 import styles from "./strategy-validation.module.css";
 
 export const dynamic = "force-dynamic";
 export default async function StrategyValidationPage() {
   const db = createServiceClient();
-  const [validations, runtime, hypotheses, protocols] = await Promise.all([
+  const [validations, runtime, hypotheses, protocols, definitions, runs] = await Promise.all([
     db.from("strategy_validation_runs").select("*,strategy_definitions(name,strategy_key,version)").order("created_at", { ascending: false }).limit(30),
     db.from("strategy_runtime_assessments").select("*,strategy_definitions(name,strategy_key,version)").order("created_at", { ascending: false }).limit(30),
-    db.from("strategy_hypotheses").select("id", { count: "exact", head: true }),
+    db.from("strategy_hypotheses").select("id,strategy_definition_id,hypothesis_version,thesis", { count: "exact" }).order("created_at", { ascending: false }),
     db.from("strategy_validation_protocols").select("protocol_key,version,status").eq("status", "ACTIVE").order("version", { ascending: false }).limit(1),
+    db.from("strategy_definitions").select("id,name,strategy_key,version").eq("status", "ACTIVE").order("name"),
+    db.from("strategy_evaluation_runs").select("id,strategy_definition_id,status,trade_count,information_cutoff_at,assets(symbol),strategy_definitions(name,version)").order("created_at", { ascending: false }).limit(100),
   ]);
   const validationRows:any[]=validations.data??[], runtimeRows:any[]=runtime.data??[], latestValidation=validationRows[0], latestRuntime=runtimeRows[0], activeProtocol:any=protocols.data?.[0];
   return <main className={styles.page}>
     <section className={styles.hero}><p>VALIDATION CONTROL PLANE</p><h1>Prove the edge.<br/>Then protect it.</h1><span>Immutable learning windows, honest out-of-sample evidence and runtime governance with NO_TRADE as default.</span></section>
     <section className={styles.summary}><Metric label="Active protocol" value={activeProtocol?`${activeProtocol.protocol_key} v${activeProtocol.version}`:"NOT APPLIED"}/><Metric label="Hypotheses" value={String(hypotheses.count??0)}/><Metric label="Validation runs" value={String(validationRows.length)}/><Metric label="Runtime default" value="NO_TRADE"/></section>
+    <ValidationControls definitions={(definitions.data??[]) as any} hypotheses={(hypotheses.data??[]) as any} runs={(runs.data??[]).map((run:any)=>({ id:run.id,strategy_definition_id:run.strategy_definition_id,label:`${relation(run.strategy_definitions)?.name??"Strategy"} · ${relation(run.assets)?.symbol??"Asset"} · ${run.trade_count} trades · ${date(run.information_cutoff_at)}` }))}/>
     <section className={styles.grid}><article className={styles.panel}><header><div><p>VALIDATION LIFECYCLE</p><h2>Learning to limited live</h2></div></header><div className={styles.timeline}>{["LEARNING","FROZEN","OUT_OF_SAMPLE","DEMO_VALIDATION","APPROVED_SHADOW","LIVE_LIMITED"].map((phase,index)=><div key={phase}><b>{String(index+1).padStart(2,"0")}</b><span>{phase.replaceAll("_"," ")}</span></div>)}</div><footer>No phase can silently skip its predecessor.</footer></article>
     <article className={styles.panel}><header><div><p>LATEST DECISION</p><h2>{latestValidation?.decision??"INSUFFICIENT_DATA"}</h2></div></header>{latestValidation?<GateList gates={latestValidation.gates}/>:<Empty text="No immutable validation run exists yet."/>}<footer>{latestValidation?`Cutoff ${date(latestValidation.information_cutoff_at)}`:"Apply migration 0071 and register a hypothesis."}</footer></article></section>
     <section className={styles.panel}><header><div><p>RUNTIME GOVERNANCE</p><h2>{latestRuntime?.decision??"NO_TRADE"}</h2></div><span>{latestRuntime?.runtime_state??"RESEARCH"}</span></header>{latestRuntime?<div className={styles.runtime}><GateList gates={latestRuntime.gates}/><div className={styles.diagnostics}><Metric label="Edge decay" value={latestRuntime.edge_decay?.status??"UNKNOWN"}/><Metric label="Correlation" value={number(latestRuntime.correlation_assessment?.value)}/><Metric label="Coverage" value={percent(latestRuntime.correlation_assessment?.coverage)}/><Metric label="Risk of ruin" value={percent(latestRuntime.risk_diagnostics?.riskOfRuin)}/><Metric label="Kelly cap" value={percent(latestRuntime.risk_diagnostics?.fractionalKellyCap)}/><Metric label="Revalidation" value={latestRuntime.revalidation_required?"REQUIRED":"NO"}/></div></div>:<Empty text="No runtime assessment exists. Missing evidence remains UNKNOWN and trading remains blocked."/>}</section>
