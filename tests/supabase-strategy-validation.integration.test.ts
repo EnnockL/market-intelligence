@@ -32,4 +32,25 @@ suite("Supabase strategy validation and runtime governance v1", () => {
     const result = await db.from("strategy_validation_protocols").update({ status: "DEPRECATED" }).eq("id", data!.id);
     expect(result.error?.message).toContain("immutable");
   });
+
+  it("exposes automated window and shadow tracking stores and scheduler jobs", async () => {
+    const [plans, observations, jobs] = await Promise.all([
+      db.from("strategy_validation_window_plans").select("id").limit(1),
+      db.from("strategy_shadow_observations").select("id").limit(1),
+      db
+        .from("scheduled_jobs")
+        .select("job_key,job_type,enabled")
+        .in("job_key", ["strategy-validation-windows-1h", "strategy-shadow-tracking-5m"]),
+    ]);
+
+    expect(plans.error).toBeNull();
+    expect(observations.error).toBeNull();
+    expect(jobs.error).toBeNull();
+    expect(jobs.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ job_key: "strategy-validation-windows-1h", enabled: true }),
+        expect.objectContaining({ job_key: "strategy-shadow-tracking-5m", enabled: true }),
+      ]),
+    );
+  });
 });

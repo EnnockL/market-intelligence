@@ -50,6 +50,8 @@ import { runWalletPromotion } from "@/workers/wallet-promotion";
 import { runWalletPnl } from "@/workers/wallet-pnl";
 import { runWalletEvidence } from "@/workers/wallet-evidence";
 import { runWalletClustering } from "@/workers/wallet-clustering";
+import { runStrategyValidationWindows } from "@/workers/strategy-validation-windows";
+import { runStrategyShadowTracking } from "@/workers/strategy-shadow-tracking";
 
 export interface SchedulerNewsConfig {
   provider: NewsProvider;
@@ -185,6 +187,10 @@ export class ForecastSchedulerService {
 
   private async execute(job: any, now: string): Promise<any> {
     const repo = new IngestionRepository(this.db);
+    if (job.job_type === "STRATEGY_VALIDATION_WINDOWS")
+      return runStrategyValidationWindows(this.db, now);
+    if (job.job_type === "STRATEGY_SHADOW_TRACKING")
+      return runStrategyShadowTracking(this.db, now);
     if (job.job_type === "POOL_DISCOVERY")
       return runPoolDiscovery(
         this.db,
@@ -225,7 +231,13 @@ export class ForecastSchedulerService {
       return runWalletClustering(
         this.db,
         repo,
-        Math.max(2, Math.min(env.WALLET_CLUSTERING_MAX_WALLETS, Number(job.rate_limit_budget?.maxWallets ?? 150))),
+        Math.max(
+          2,
+          Math.min(
+            env.WALLET_CLUSTERING_MAX_WALLETS,
+            Number(job.rate_limit_budget?.maxWallets ?? 150),
+          ),
+        ),
       );
     }
     if (job.job_type === "WALLET_EVIDENCE") {
@@ -238,7 +250,13 @@ export class ForecastSchedulerService {
           new SolanaRpcTokenRiskProvider(env.SOLANA_RPC_URL),
         ),
         repo,
-        Math.max(1, Math.min(env.WALLET_EVIDENCE_MAX_TOKENS, Number(job.rate_limit_budget?.maxTokens ?? 5))),
+        Math.max(
+          1,
+          Math.min(
+            env.WALLET_EVIDENCE_MAX_TOKENS,
+            Number(job.rate_limit_budget?.maxTokens ?? 5),
+          ),
+        ),
         now,
       );
     }
@@ -248,7 +266,10 @@ export class ForecastSchedulerService {
       return runWalletPnl(
         this.ingestion.cryptoProvider,
         repo,
-        Math.max(1, Math.min(50, Number(job.rate_limit_budget?.maxTransactions ?? 10))),
+        Math.max(
+          1,
+          Math.min(50, Number(job.rate_limit_budget?.maxTransactions ?? 10)),
+        ),
       );
     }
     if (job.job_type === "CRYPTO_MARKET") {
