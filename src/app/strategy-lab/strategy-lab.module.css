@@ -334,6 +334,19 @@
 .negative {
   color: #ff7782;
 }
+.capitalProjection { padding: 24px; }
+.capitalControls { display: flex; gap: 14px; margin-bottom: 18px; }
+.capitalControls label { display: flex; flex-direction: column; gap: 8px; color: #929995; font-size: 12px; }
+.capitalControls input, .capitalControls select { min-width: 180px; box-sizing: border-box; padding: 11px 13px; border: 1px solid #303532; border-radius: 10px; background: #0b0d0c; color: #eef1ef; color-scheme: dark; }
+.capitalResult { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); overflow: hidden; border: 1px solid #252a28; border-radius: 16px; }
+.capitalResult > div { display: flex; flex-direction: column; gap: 9px; padding: 22px; border-right: 1px solid #252a28; background: #111312; }
+.capitalResult > div:last-child { border-right: 0; }
+.capitalResult small { color: #737a76; font: 600 10px monospace; letter-spacing: .1em; }
+.capitalResult strong { font-size: clamp(18px, 2vw, 26px); }
+.capitalDisclaimer { margin: 14px 0 0; color: #747c78; font: 11px/1.6 monospace; }
+.capitalEmpty { display: flex; flex-direction: column; gap: 9px; padding: 36px; }
+.capitalEmpty strong { color: #e8c765; font: 12px monospace; }
+.capitalEmpty span { color: #8e9491; }
 @media (max-width: 900px) {
   .workspaceGrid,
   .visualGrid {
@@ -342,4 +355,15 @@
   .dateRow {
     grid-template-columns: 1fr;
   }
+  .capitalResult { grid-template-columns: 1fr 1fr; }
+  .capitalResult > div:nth-child(2) { border-right: 0; }
+  .capitalResult > div:nth-child(-n+2) { border-bottom: 1px solid #252a28; }
+}
+@media (max-width: 600px) {
+  .capitalProjection { padding: 14px; }
+  .capitalControls { flex-direction: column; }
+  .capitalControls input, .capitalControls select { width: 100%; min-width: 0; }
+  .capitalResult { grid-template-columns: 1fr; }
+  .capitalResult > div { border-right: 0; border-bottom: 1px solid #252a28; }
+  .capitalResult > div:last-child { border-bottom: 0; }
 }
