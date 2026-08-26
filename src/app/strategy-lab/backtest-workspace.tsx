@@ -9,13 +9,13 @@ export function BacktestWorkspace({ definitions, assets, sources }: { definition
   const [runState, runAction, runPending] = useActionState(runBacktest, initial), [syncState, syncAction, syncPending] = useActionState(syncCandleSource, initial);
   const today = new Date().toISOString().slice(0, 10), start = new Date(Date.now() - 90 * 86_400_000).toISOString().slice(0, 10);
   return <div className={styles.workspaceGrid}>
-    <form action={runAction} className={styles.controlCard}>
+    <form key={[runState.values?.definitionId, runState.values?.assetId, runState.values?.startsAt, runState.values?.endsAt].join(":")} action={runAction} className={styles.controlCard}>
       <div className={styles.cardHeader}><small>BACKTEST</small><h3>Run historical evaluation</h3><p>Testa en låst regelversion mot point-in-time marknadsdata.</p></div>
       <div className={styles.fieldGrid}>
-        <label>Strategy<select name="definitionId" required>{definitions.map(item => <option key={item.id} value={item.id}>{item.name} · {item.timeframe}</option>)}</select></label>
-        <label>Asset<select name="assetId" required>{assets.map(item => <option key={item.id} value={item.id}>{item.symbol} · {item.kind}</option>)}</select></label>
+        <label>Strategy<select name="definitionId" defaultValue={runState.values?.definitionId} required>{definitions.map(item => <option key={item.id} value={item.id}>{item.name} · {item.timeframe}</option>)}</select></label>
+        <label>Asset<select name="assetId" defaultValue={runState.values?.assetId} required>{assets.map(item => <option key={item.id} value={item.id}>{item.symbol} · {item.kind}</option>)}</select></label>
       </div>
-      <div className={styles.dateRow}><label>From<input name="startsAt" type="date" defaultValue={start} required/></label><label>To<input name="endsAt" type="date" defaultValue={today} required/></label></div>
+      <div className={styles.dateRow}><label>From<input name="startsAt" type="date" defaultValue={runState.values?.startsAt ?? start} required/></label><label>To<input name="endsAt" type="date" defaultValue={runState.values?.endsAt ?? today} required/></label></div>
       {!assets.length ? <p className={styles.actionError}>Ingen asset har en aktiv candle-källa. Kontrollera Historical Data nedan.</p> : null}
       <button className={styles.primaryAction} disabled={runPending || !assets.length}>{runPending ? "Running…" : "Run deterministic backtest"}</button><ActionMessage state={runState}/>
     </form>

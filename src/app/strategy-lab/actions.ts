@@ -9,25 +9,40 @@ import { FinnhubCandleProvider } from "@/services/candles/finnhub-candle-provide
 import { GeckoTerminalCandleProvider } from "@/services/candles/geckoterminal-candle-provider";
 import type { StrategyDefinition } from "@/domain/strategy-pattern-lab";
 
-export type LabActionState = { status: "IDLE" | "SUCCESS" | "ERROR"; message: string };
+export type LabActionState = {
+  status: "IDLE" | "SUCCESS" | "ERROR";
+  message: string;
+  values?: {
+    definitionId?: string;
+    assetId?: string;
+    startsAt?: string;
+    endsAt?: string;
+  };
+};
 const runSchema = z.object({ definitionId: z.string().uuid(), assetId: z.string().uuid(), startsAt: z.string().date(), endsAt: z.string().date() });
 
 export async function runBacktest(_: LabActionState, formData: FormData): Promise<LabActionState> {
-  const parsed = runSchema.safeParse({ definitionId: formData.get("definitionId"), assetId: formData.get("assetId"), startsAt: formData.get("startsAt"), endsAt: formData.get("endsAt") });
-  if (!parsed.success) return { status: "ERROR", message: "Kontrollera strategi, asset och datum." };
+  const values = {
+    definitionId: String(formData.get("definitionId") ?? ""),
+    assetId: String(formData.get("assetId") ?? ""),
+    startsAt: String(formData.get("startsAt") ?? ""),
+    endsAt: String(formData.get("endsAt") ?? ""),
+  };
+  const parsed = runSchema.safeParse(values);
+  if (!parsed.success) return { status: "ERROR", message: "Kontrollera strategi, asset och datum.", values };
   const startsAt = `${parsed.data.startsAt}T00:00:00.000Z`, endsAt = `${parsed.data.endsAt}T23:59:59.999Z`;
-  if (startsAt > endsAt || Date.parse(endsAt) - Date.parse(startsAt) > 2 * 366 * 86_400_000) return { status: "ERROR", message: "Perioden måste vara 1–732 dagar." };
+  if (startsAt > endsAt || Date.parse(endsAt) - Date.parse(startsAt) > 2 * 366 * 86_400_000) return { status: "ERROR", message: "Perioden måste vara 1–732 dagar.", values };
   const db = createServiceClient();
   const [definitionResult, assetResult] = await Promise.all([db.from("strategy_definitions").select("definition,timeframe").eq("id", parsed.data.definitionId).eq("status", "ACTIVE").single(), db.from("assets").select("id,symbol").eq("id", parsed.data.assetId).eq("is_active", true).single()]);
-  if (definitionResult.error || assetResult.error) return { status: "ERROR", message: "Strategin eller asseten är inte tillgänglig." };
+  if (definitionResult.error || assetResult.error) return { status: "ERROR", message: "Strategin eller asseten är inte tillgänglig.", values };
   try {
     const candleCheck = await db.from("market_candles").select("id", { count: "exact", head: true }).eq("asset_id", assetResult.data.id).eq("timeframe", definitionResult.data.timeframe).gte("opened_at", startsAt).lte("closed_at", endsAt).lte("available_at", endsAt);
     if (candleCheck.error) throw candleCheck.error;
-    if (!candleCheck.count) return { status: "ERROR", message: `${assetResult.data.symbol} saknar ${definitionResult.data.timeframe}-candles i den valda perioden. Välj en konfigurerad asset eller importera dess candle-källa först.` };
+    if (!candleCheck.count) return { status: "ERROR", message: `${assetResult.data.symbol} saknar ${definitionResult.data.timeframe}-candles i den valda perioden. Välj en konfigurerad asset eller importera dess candle-källa först.`, values };
     const result = await new StrategyPatternLabService(db).run(definitionResult.data.definition as StrategyDefinition, assetResult.data.id, endsAt, startsAt);
     revalidatePath("/strategy-lab");
-    return { status: "SUCCESS", message: `${assetResult.data.symbol}: ${result.evaluation.candleCount} candles, ${result.evaluation.setupCount} setups och ${result.evaluation.tradeCount} trades.` };
-  } catch (error) { return { status: "ERROR", message: error instanceof Error ? error.message : "Backtest kunde inte köras." }; }
+    return { status: "SUCCESS", message: `${assetResult.data.symbol}: ${result.evaluation.candleCount} candles, ${result.evaluation.setupCount} setups och ${result.evaluation.tradeCount} trades.`, values };
+  } catch (error) { return { status: "ERROR", message: error instanceof Error ? error.message : "Backtest kunde inte köras.", values }; }
 }
 
 export async function syncCandleSource(_: LabActionState, formData: FormData): Promise<LabActionState> {
