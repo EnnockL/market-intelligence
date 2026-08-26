@@ -243,6 +243,16 @@ export const SYSTEM_CATALOG: SystemCatalogItem[] = [
     description: "Immutable strategy definitions and replay evaluations.",
   },
   {
+    name: "Strategy Validation & Runtime Governance",
+    kind: "RESEARCH",
+    backendJob: "strategy_validation",
+    schedulerType: null,
+    frontend: "Strategy Validation",
+    route: "/strategy-validation",
+    description:
+      "Frozen hypotheses, out-of-sample gates, edge-decay checks, portfolio correlation and NO_TRADE runtime control.",
+  },
+  {
     name: "Expert Knowledge",
     kind: "INTELLIGENCE",
     backendJob: "expert_knowledge",

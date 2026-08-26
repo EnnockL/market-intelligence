@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 const groups = [
   { label: "Workspace", items: [["/", "⌁", "Market Radar"], ["/paper", "▣", "Paper Portfolio"], ["/execution", "E", "Execution Guard"], ["/watchlist", "☆", "Watchlist"], ["/signals", "⌁", "Signals"]] },
   { label: "Intelligence", items: [["/research", "◎", "Research"], ["/agents", "◉", "Agent Center"], ["/data-collection", "D", "Data Operations"], ["/fast-flow", "ϟ", "Fast Flow"], ["/jackpot", "◇", "Jackpot Radar"]] },
-  { label: "Labs & Replay", items: [["/systems", "▦", "System Map"], ["/simulation", "∿", "Simulation Lab"], ["/replay", "↶", "Historical Replay"], ["/strategy-lab", "⌬", "Strategy Lab"], ["/forecasts", "△", "Forecasts"]] },
+  { label: "Labs & Replay", items: [["/systems", "▦", "System Map"], ["/simulation", "∿", "Simulation Lab"], ["/replay", "↶", "Historical Replay"], ["/strategy-lab", "⌬", "Strategy Lab"], ["/strategy-validation", "V", "Strategy Validation"], ["/forecasts", "△", "Forecasts"]] },
 ] as const;
 
 type GroupLabel = (typeof groups)[number]["label"];
