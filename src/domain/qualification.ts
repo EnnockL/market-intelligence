@@ -19,6 +19,12 @@ export const QUALIFICATION_POLICY_V1 = {
   ],
 } as const;
 
+// V2 corrects lateness semantics without lowering any verification threshold.
+export const QUALIFICATION_POLICY_V2 = {
+  ...QUALIFICATION_POLICY_V1,
+  version: "jackpot-qualification-policy-v2",
+} as const;
+
 export type RequirementStatus = "PASS" | "FAIL" | "UNKNOWN" | "NOT_APPLICABLE";
 export type QualificationDecision = "QUALIFIED" | "WATCH" | "REJECTED";
 export type DecisionReason = "PASS" | "TRUE_NEGATIVE" | "DATA_BLOCKED";
@@ -50,7 +56,7 @@ function requirement(key: RequirementKey, status: RequirementStatus, observedVal
 }
 
 export function evaluateQualification(input: QualificationInput): QualificationEvaluation {
-  const p = QUALIFICATION_POLICY_V1;
+  const p = QUALIFICATION_POLICY_V2;
   for (const refs of Object.values(input.evidence)) for (const ref of refs ?? []) if (Date.parse(ref.availableAt) > Date.parse(input.informationCutoffAt)) throw new Error(`FUTURE_EVIDENCE_REJECTED:${ref.id}`);
   const requirements: RequirementEvaluation[] = [
     requirement("safety", input.safety === null || input.safety === "UNKNOWN" ? "UNKNOWN" : input.safety === "PASS" ? "PASS" : "FAIL", input.safety, "PASS", "SAFETY_BLOCKED", input.evidence.safety ?? [], input.informationCutoffAt),

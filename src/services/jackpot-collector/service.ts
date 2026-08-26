@@ -3,6 +3,7 @@ import type { EventEnvelope } from "@/domain/events";
 import { deterministicDigest } from "@/domain/events";
 import {
   collectorKey,
+  eventLatencyFeatures,
   JACKPOT_COLLECTOR_VERSION,
   nextJackpotState,
 } from "@/domain/jackpot-candidate";
@@ -184,11 +185,7 @@ export class JackpotCollectorService {
       ),
       priceAtFirstWalletEntry: num((event.payload as any)?.priceUsd),
       priceAtDetection: price,
-      latencyFromFirstBuyMs: Math.max(
-        0,
-        Date.parse(cutoff) - Date.parse(event.occurredAt),
-      ),
-      latencyFromConvergenceMs: null,
+      ...eventLatencyFeatures(event.eventType, event.occurredAt, cutoff),
     }, evidence: wallet.evidence };
   }
 }

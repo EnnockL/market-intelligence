@@ -1,15 +1,19 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { deterministicDigest } from "@/domain/events";
-import { aggregateQualifications, evaluateQualification, QUALIFICATION_POLICY_V1, type EvidenceRef, type QualificationEvaluation, type RequirementKey } from "@/domain/qualification";
+import { aggregateQualifications, evaluateQualification, QUALIFICATION_POLICY_V2, type EvidenceRef, type QualificationEvaluation, type RequirementKey } from "@/domain/qualification";
 
 export class QualificationDiagnosticsService {
+  private static readonly MAX_REVISIONS_PER_RUN = 50;
   constructor(private db: SupabaseClient) {}
 
   async run(cutoff = new Date().toISOString()) {
     const policy = await this.ensurePolicy();
     const { data: revisions, error } = await this.db.from("jackpot_candidate_revisions")
-      .select("*,jackpot_candidates!inner(id,current_state,asset_id)")
-      .lte("information_cutoff_at", cutoff).order("information_cutoff_at").order("revision_number");
+      .select("*,jackpot_candidates!inner(id,current_state,asset_id,created_from_event_id)")
+      .lte("information_cutoff_at", cutoff)
+      .order("information_cutoff_at", { ascending: false })
+      .order("revision_number", { ascending: false })
+      .limit(QualificationDiagnosticsService.MAX_REVISIONS_PER_RUN);
     if (error) throw error;
     let created = 0;
     const evaluations: QualificationEvaluation[] = [];
@@ -52,19 +56,19 @@ export class QualificationDiagnosticsService {
       policy_strictness: aggregate.policyStrictness, information_cutoff_at: cutoff, input_hash: hash,
     }, { onConflict: "input_hash", ignoreDuplicates: true });
     if (aggregateError) throw aggregateError;
-    return { revisions: (revisions ?? []).length, created, funnel, aggregate };
+    return { revisions: (revisions ?? []).length, created, bounded: true, maximumRevisions: QualificationDiagnosticsService.MAX_REVISIONS_PER_RUN, funnel, aggregate };
   }
 
   private async ensurePolicy() {
-    const { error } = await this.db.from("qualification_policies").upsert({ policy_version: QUALIFICATION_POLICY_V1.version, configuration: QUALIFICATION_POLICY_V1 }, { onConflict: "policy_version", ignoreDuplicates: true });
+    const { error } = await this.db.from("qualification_policies").upsert({ policy_version: QUALIFICATION_POLICY_V2.version, configuration: QUALIFICATION_POLICY_V2 }, { onConflict: "policy_version", ignoreDuplicates: true });
     if (error) throw error;
-    return QUALIFICATION_POLICY_V1.version;
+    return QUALIFICATION_POLICY_V2.version;
   }
 
   private async evaluateRevision(candidate: any, revision: any) {
     const cutoff = revision.information_cutoff_at;
     const [{ data: events, error: eventError }, { data: risks, error: riskError }] = await Promise.all([
-      this.db.from("event_outbox").select("event_id,event_type,available_at,provider,data_quality,payload").eq("asset_id", candidate.asset_id).lte("available_at", cutoff).order("available_at"),
+      this.db.from("event_outbox").select("event_id,event_type,occurred_at,available_at,provider,data_quality,payload").eq("asset_id", candidate.asset_id).lte("available_at", cutoff).order("available_at"),
       this.db.from("token_risk_assessments").select("id,provider,information_available_at,data_quality,rug_status,risk_components").eq("asset_id", candidate.asset_id).lte("information_available_at", cutoff).order("information_available_at", { ascending: false }).limit(1),
     ]);
     if (eventError) throw eventError;
@@ -81,13 +85,18 @@ export class QualificationDiagnosticsService {
     const risk = risks?.[0];
     if (risk) evidence.token_risk_coverage = [{ type: "token_risk_assessment", id: risk.id, availableAt: risk.information_available_at, source: risk.provider, dataQuality: risk.data_quality }];
     const riskCoverage = risk ? riskCoveragePercent(risk.risk_components) : null;
+    const latencyEventId = revision.trigger_event_id ?? candidate.created_from_event_id;
+    const latencyEvent = (events ?? []).find((item: any) => item.event_id === latencyEventId);
+    const latenessMs = latencyEvent?.event_type === "wallet.buy_detected" || latencyEvent?.event_type === "opportunity.fast_created"
+      ? elapsedMs(latencyEvent.occurred_at, latencyEvent.available_at)
+      : null;
     return evaluateQualification({
       candidateId: candidate.id, candidateRevision: revision.revision_number, currentState: revision.state, informationCutoffAt: cutoff,
       safety, dataQuality: number(features.dataQuality), liquidityUsd: number(features.liquidity),
       rawWalletCount: number(features.rawWalletCount), independentWallets: number(features.confirmedIndependent),
       verifiedWallets: number(features.verifiedWalletCount), relationshipCoverage: number(features.relationshipCoverage), riskCoverage,
       priceAcceleration: evidence.price_acceleration.length ? true : null, volumeAcceleration: evidence.volume_acceleration.length ? true : null,
-      latenessMs: number(features.latencyFromFirstBuyMs), marketCapUsd: number(features.marketCap), tokenAgeSeconds: number(features.tokenAgeSeconds),
+      latenessMs, marketCapUsd: number(features.marketCap), tokenAgeSeconds: number(features.tokenAgeSeconds),
       newWalletInflow: evidence.new_wallet_inflow.length ? true : null, holderGrowth: evidence.holder_growth.length ? true : null,
       holderProviderAvailable: evidence.holder_growth.length > 0, evidence,
     });
@@ -101,4 +110,5 @@ export class QualificationDiagnosticsService {
   }
 }
 function number(value: unknown) { const n = Number(value); return value === null || value === undefined || !Number.isFinite(n) ? null : n; }
+function elapsedMs(from: unknown, to: unknown) { const start = Date.parse(String(from)), end = Date.parse(String(to)); return Number.isFinite(start) && Number.isFinite(end) ? Math.max(0, end - start) : null; }
 function riskCoveragePercent(value: any) { const components = value?.components; if (!Array.isArray(components) || !components.length) return null; return Math.round(components.filter((c: any) => c.status && c.status !== "UNKNOWN").length / components.length * 100); }
