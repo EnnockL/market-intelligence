@@ -64,6 +64,10 @@ import { runExecutionPipeline } from "./execution-pipeline";
 import { runPoolDiscovery } from "./pool-discovery";
 import { runStrategyValidationWindows } from "./strategy-validation-windows";
 import { runStrategyShadowTracking } from "./strategy-shadow-tracking";
+import {
+  runStrategyShadowExecution,
+  runStrategySignalProducer,
+} from "./strategy-runtime";
 import { CompositePoolDiscoveryProvider } from "@/services/pool-discovery/composite-provider";
 import { GeckoTerminalPoolDiscoveryProvider } from "@/services/pool-discovery/geckoterminal-provider";
 import { DexScreenerPoolDiscoveryProvider } from "@/services/pool-discovery/dexscreener-provider";
@@ -122,6 +126,8 @@ async function main() {
       "execution-pipeline",
       "strategy-validation-windows",
       "strategy-shadow-tracking",
+      "strategy-signal-producer",
+      "strategy-shadow-execution",
     ].includes(job)
   )
     throw new Error("Unknown worker job");
@@ -156,260 +162,244 @@ async function main() {
     discoverySeeds,
   };
   const result =
-    job === "strategy-shadow-tracking"
-      ? await runStrategyShadowTracking(db)
-      : job === "strategy-validation-windows"
-        ? await runStrategyValidationWindows(db)
-        : job === "pool-discovery"
-          ? await runPoolDiscovery(
-              db,
-              repository,
-              new CompositePoolDiscoveryProvider([
-                new GeckoTerminalPoolDiscoveryProvider(),
-                new DexScreenerPoolDiscoveryProvider(),
-              ]),
-            )
-          : job === "execution-pipeline"
-            ? await runExecutionPipeline(db, env)
-            : job === "trade-proposal-producer"
-              ? await runTradeProposalProducer(db)
-              : job === "execution-bridge"
-                ? await runExecutionBridge(db, env)
-                : job === "account-state"
-                  ? await runAccountState(db, env)
-                  : job === "trade-eligibility"
-                    ? await runTradeEligibility(db)
-                    : job === "execution"
-                      ? await runExecution(db, env)
-                      : job === "strategy-intelligence"
-                        ? await runStrategyIntelligence(db)
-                        : job === "ai-explanations"
-                          ? env.OPENAI_API_KEY
-                            ? await runAIExplanations(
-                                db,
-                                new OpenAIResponsesProvider(
-                                  env.OPENAI_API_KEY,
-                                  env.OPENAI_MODEL,
-                                ),
-                              )
-                            : (() => {
-                                throw new Error(
-                                  "OPENAI_API_KEY is required for ai-explanations",
-                                );
-                              })()
-                          : job === "candle-ingestion"
-                            ? await runCandleIngestion(db, env.FINNHUB_API_KEY)
-                            : job === "strategy-pattern-lab"
-                              ? await runStrategyResearchCycle(db)
-                              : job === "meta-readiness"
-                                ? await runMetaReadiness(db, repository)
-                                : job === "meta-agent"
-                                  ? await runMetaAgent(db, repository)
-                                  : job === "market-regime"
-                                    ? await runMarketRegime(db, repository)
-                                    : job === "agent-performance"
-                                      ? await runAgentPerformance(
-                                          db,
-                                          repository,
-                                        )
-                                      : job === "consensus"
-                                        ? await runConsensus(db, repository)
-                                        : job === "catalyst-classification"
-                                          ? await runCatalystClassification(
+    job === "strategy-shadow-execution"
+      ? await runStrategyShadowExecution(db)
+      : job === "strategy-signal-producer"
+        ? await runStrategySignalProducer(db)
+        : job === "strategy-shadow-tracking"
+          ? await runStrategyShadowTracking(db)
+          : job === "strategy-validation-windows"
+            ? await runStrategyValidationWindows(db)
+            : job === "pool-discovery"
+              ? await runPoolDiscovery(
+                  db,
+                  repository,
+                  new CompositePoolDiscoveryProvider([
+                    new GeckoTerminalPoolDiscoveryProvider(),
+                    new DexScreenerPoolDiscoveryProvider(),
+                  ]),
+                )
+              : job === "execution-pipeline"
+                ? await runExecutionPipeline(db, env)
+                : job === "trade-proposal-producer"
+                  ? await runTradeProposalProducer(db)
+                  : job === "execution-bridge"
+                    ? await runExecutionBridge(db, env)
+                    : job === "account-state"
+                      ? await runAccountState(db, env)
+                      : job === "trade-eligibility"
+                        ? await runTradeEligibility(db)
+                        : job === "execution"
+                          ? await runExecution(db, env)
+                          : job === "strategy-intelligence"
+                            ? await runStrategyIntelligence(db)
+                            : job === "ai-explanations"
+                              ? env.OPENAI_API_KEY
+                                ? await runAIExplanations(
+                                    db,
+                                    new OpenAIResponsesProvider(
+                                      env.OPENAI_API_KEY,
+                                      env.OPENAI_MODEL,
+                                    ),
+                                  )
+                                : (() => {
+                                    throw new Error(
+                                      "OPENAI_API_KEY is required for ai-explanations",
+                                    );
+                                  })()
+                              : job === "candle-ingestion"
+                                ? await runCandleIngestion(
+                                    db,
+                                    env.FINNHUB_API_KEY,
+                                  )
+                                : job === "strategy-pattern-lab"
+                                  ? await runStrategyResearchCycle(db)
+                                  : job === "meta-readiness"
+                                    ? await runMetaReadiness(db, repository)
+                                    : job === "meta-agent"
+                                      ? await runMetaAgent(db, repository)
+                                      : job === "market-regime"
+                                        ? await runMarketRegime(db, repository)
+                                        : job === "agent-performance"
+                                          ? await runAgentPerformance(
                                               db,
                                               repository,
                                             )
-                                          : job === "news-ingestion"
-                                            ? await runNewsIngestion(
-                                                db,
-                                                repository,
-                                                new FinnhubNewsProvider(
-                                                  env.FINNHUB_API_KEY,
-                                                ),
-                                                stockSymbols,
-                                              )
-                                            : job === "specialist-agents"
-                                              ? await runSpecialistAgents(
+                                          : job === "consensus"
+                                            ? await runConsensus(db, repository)
+                                            : job === "catalyst-classification"
+                                              ? await runCatalystClassification(
                                                   db,
                                                   repository,
                                                 )
-                                              : job === "forecast-scheduler"
-                                                ? await runForecastScheduler(
+                                              : job === "news-ingestion"
+                                                ? await runNewsIngestion(
                                                     db,
                                                     repository,
-                                                    {
-                                                      provider:
-                                                        new FinnhubNewsProvider(
-                                                          env.FINNHUB_API_KEY,
-                                                        ),
-                                                      symbols: stockSymbols,
-                                                    },
-                                                    schedulerIngestion,
+                                                    new FinnhubNewsProvider(
+                                                      env.FINNHUB_API_KEY,
+                                                    ),
+                                                    stockSymbols,
                                                   )
-                                                : job === "forecast-performance"
-                                                  ? await runForecastPerformance(
+                                                : job === "specialist-agents"
+                                                  ? await runSpecialistAgents(
                                                       db,
                                                       repository,
                                                     )
-                                                  : job === "baseline-forecast"
-                                                    ? await runBaselineForecast(
+                                                  : job === "forecast-scheduler"
+                                                    ? await runForecastScheduler(
                                                         db,
                                                         repository,
+                                                        {
+                                                          provider:
+                                                            new FinnhubNewsProvider(
+                                                              env.FINNHUB_API_KEY,
+                                                            ),
+                                                          symbols: stockSymbols,
+                                                        },
+                                                        schedulerIngestion,
                                                       )
-                                                    : job === "expert-knowledge"
-                                                      ? await runExpertKnowledge(
+                                                    : job ===
+                                                        "forecast-performance"
+                                                      ? await runForecastPerformance(
                                                           db,
                                                           repository,
                                                         )
                                                       : job ===
-                                                          "forecast-catalyst"
-                                                        ? await runForecastCatalyst(
+                                                          "baseline-forecast"
+                                                        ? await runBaselineForecast(
                                                             db,
                                                             repository,
                                                           )
                                                         : job ===
-                                                            "historical-replay"
-                                                          ? await runHistoricalReplay(
+                                                            "expert-knowledge"
+                                                          ? await runExpertKnowledge(
                                                               db,
                                                               repository,
                                                             )
-                                                          : job === "simulation"
-                                                            ? await runSimulation(
+                                                          : job ===
+                                                              "forecast-catalyst"
+                                                            ? await runForecastCatalyst(
                                                                 db,
                                                                 repository,
                                                               )
                                                             : job ===
-                                                                "data-gap-closure"
-                                                              ? env.BIRDEYE_API_KEY
-                                                                ? await runDataGapClosure(
-                                                                    db,
-                                                                    repository,
-                                                                    new BirdeyeHistoricalLiquidityProvider(
-                                                                      env.BIRDEYE_API_KEY,
-                                                                    ),
-                                                                    new FallbackTokenRiskProvider(
-                                                                      new BirdeyeTokenRiskProvider(
-                                                                        env.BIRDEYE_API_KEY,
-                                                                      ),
-                                                                      new SolanaRpcTokenRiskProvider(
-                                                                        env.SOLANA_RPC_URL,
-                                                                      ),
-                                                                    ),
-                                                                    env.WALLET_EVIDENCE_MAX_TOKENS,
-                                                                  )
-                                                                : (() => {
-                                                                    throw new Error(
-                                                                      "BIRDEYE_API_KEY is required for data-gap-closure",
-                                                                    );
-                                                                  })()
+                                                                "historical-replay"
+                                                              ? await runHistoricalReplay(
+                                                                  db,
+                                                                  repository,
+                                                                )
                                                               : job ===
-                                                                  "qualification"
-                                                                ? await runQualification(
+                                                                  "simulation"
+                                                                ? await runSimulation(
                                                                     db,
                                                                     repository,
                                                                   )
-                                                                : job === "fx"
-                                                                  ? await runFx(
-                                                                      db,
-                                                                      repository,
-                                                                    )
+                                                                : job ===
+                                                                    "data-gap-closure"
+                                                                  ? env.BIRDEYE_API_KEY
+                                                                    ? await runDataGapClosure(
+                                                                        db,
+                                                                        repository,
+                                                                        new BirdeyeHistoricalLiquidityProvider(
+                                                                          env.BIRDEYE_API_KEY,
+                                                                        ),
+                                                                        new FallbackTokenRiskProvider(
+                                                                          new BirdeyeTokenRiskProvider(
+                                                                            env.BIRDEYE_API_KEY,
+                                                                          ),
+                                                                          new SolanaRpcTokenRiskProvider(
+                                                                            env.SOLANA_RPC_URL,
+                                                                          ),
+                                                                        ),
+                                                                        env.WALLET_EVIDENCE_MAX_TOKENS,
+                                                                      )
+                                                                    : (() => {
+                                                                        throw new Error(
+                                                                          "BIRDEYE_API_KEY is required for data-gap-closure",
+                                                                        );
+                                                                      })()
                                                                   : job ===
-                                                                      "performance"
-                                                                    ? await runPerformance(
+                                                                      "qualification"
+                                                                    ? await runQualification(
                                                                         db,
                                                                         repository,
                                                                       )
                                                                     : job ===
-                                                                        "paper-eligibility"
-                                                                      ? await runPaperEligibility(
+                                                                        "fx"
+                                                                      ? await runFx(
                                                                           db,
                                                                           repository,
                                                                         )
                                                                       : job ===
-                                                                          "paper-execution"
-                                                                        ? await runPaperExecution(
+                                                                          "performance"
+                                                                        ? await runPerformance(
                                                                             db,
                                                                             repository,
                                                                           )
                                                                         : job ===
-                                                                            "paper-exits"
-                                                                          ? await runPaperExits(
+                                                                            "paper-eligibility"
+                                                                          ? await runPaperEligibility(
                                                                               db,
                                                                               repository,
                                                                             )
                                                                           : job ===
-                                                                              "paper-valuation"
-                                                                            ? await runPaperValuation(
+                                                                              "paper-execution"
+                                                                            ? await runPaperExecution(
                                                                                 db,
                                                                                 repository,
                                                                               )
                                                                             : job ===
-                                                                                "fast-flow"
-                                                                              ? await runFastFlow(
+                                                                                "paper-exits"
+                                                                              ? await runPaperExits(
                                                                                   db,
                                                                                   repository,
                                                                                 )
                                                                               : job ===
-                                                                                  "market-events"
-                                                                                ? await runMarketEvents(
+                                                                                  "paper-valuation"
+                                                                                ? await runPaperValuation(
                                                                                     db,
                                                                                     repository,
                                                                                   )
                                                                                 : job ===
-                                                                                    "jackpot-collector"
-                                                                                  ? await runJackpotCollector(
+                                                                                    "fast-flow"
+                                                                                  ? await runFastFlow(
                                                                                       db,
                                                                                       repository,
                                                                                     )
                                                                                   : job ===
-                                                                                      "jackpot-outcomes"
-                                                                                    ? await runJackpotOutcomes(
+                                                                                      "market-events"
+                                                                                    ? await runMarketEvents(
                                                                                         db,
                                                                                         repository,
                                                                                       )
                                                                                     : job ===
-                                                                                        "wallet-clustering"
-                                                                                      ? await runWalletClustering(
+                                                                                        "jackpot-collector"
+                                                                                      ? await runJackpotCollector(
                                                                                           db,
                                                                                           repository,
-                                                                                          env.WALLET_CLUSTERING_MAX_WALLETS,
                                                                                         )
                                                                                       : job ===
-                                                                                          "stocks"
-                                                                                        ? await runStockIngestion(
-                                                                                            new FinnhubProvider(
-                                                                                              env.FINNHUB_API_KEY,
-                                                                                            ),
+                                                                                          "jackpot-outcomes"
+                                                                                        ? await runJackpotOutcomes(
+                                                                                            db,
                                                                                             repository,
-                                                                                            env.STOCK_SYMBOLS.split(
-                                                                                              ",",
-                                                                                            )
-                                                                                              .map(
-                                                                                                (
-                                                                                                  value,
-                                                                                                ) =>
-                                                                                                  value.trim(),
-                                                                                              )
-                                                                                              .filter(
-                                                                                                Boolean,
-                                                                                              ),
                                                                                           )
                                                                                         : job ===
-                                                                                            "wallets"
-                                                                                          ? await runWalletIngestion(
-                                                                                              new SolanaRpcProvider(
-                                                                                                env.SOLANA_RPC_URL,
-                                                                                              ),
+                                                                                            "wallet-clustering"
+                                                                                          ? await runWalletClustering(
+                                                                                              db,
                                                                                               repository,
+                                                                                              env.WALLET_CLUSTERING_MAX_WALLETS,
                                                                                             )
                                                                                           : job ===
-                                                                                              "wallet-discovery"
-                                                                                            ? await runWalletDiscovery(
-                                                                                                new SolanaRpcProvider(
-                                                                                                  env.SOLANA_RPC_URL,
+                                                                                              "stocks"
+                                                                                            ? await runStockIngestion(
+                                                                                                new FinnhubProvider(
+                                                                                                  env.FINNHUB_API_KEY,
                                                                                                 ),
                                                                                                 repository,
-                                                                                                env.SOLANA_DISCOVERY_SEEDS.split(
+                                                                                                env.STOCK_SYMBOLS.split(
                                                                                                   ",",
                                                                                                 )
                                                                                                   .map(
@@ -423,49 +413,77 @@ async function main() {
                                                                                                   ),
                                                                                               )
                                                                                             : job ===
-                                                                                                "crypto-market"
-                                                                                              ? await runCryptoMarketIngestion(
-                                                                                                  new FreeCryptoMarketProvider(
-                                                                                                    env.BIRDEYE_API_KEY
-                                                                                                      ? new BirdeyeLiveMarketProvider(
-                                                                                                          env.BIRDEYE_API_KEY,
-                                                                                                          new DexScreenerProvider(),
-                                                                                                        )
-                                                                                                      : new DexScreenerProvider(),
-                                                                                                    new GeckoTerminalProvider(),
+                                                                                                "wallets"
+                                                                                              ? await runWalletIngestion(
+                                                                                                  new SolanaRpcProvider(
+                                                                                                    env.SOLANA_RPC_URL,
                                                                                                   ),
                                                                                                   repository,
                                                                                                 )
                                                                                               : job ===
-                                                                                                  "wallet-evidence"
-                                                                                                ? env.BIRDEYE_API_KEY
-                                                                                                  ? await runWalletEvidence(
-                                                                                                      new BirdeyeHistoricalLiquidityProvider(
-                                                                                                        env.BIRDEYE_API_KEY,
+                                                                                                  "wallet-discovery"
+                                                                                                ? await runWalletDiscovery(
+                                                                                                    new SolanaRpcProvider(
+                                                                                                      env.SOLANA_RPC_URL,
+                                                                                                    ),
+                                                                                                    repository,
+                                                                                                    env.SOLANA_DISCOVERY_SEEDS.split(
+                                                                                                      ",",
+                                                                                                    )
+                                                                                                      .map(
+                                                                                                        (
+                                                                                                          value,
+                                                                                                        ) =>
+                                                                                                          value.trim(),
+                                                                                                      )
+                                                                                                      .filter(
+                                                                                                        Boolean,
                                                                                                       ),
-                                                                                                      new BirdeyeTokenRiskProvider(
-                                                                                                        env.BIRDEYE_API_KEY,
+                                                                                                  )
+                                                                                                : job ===
+                                                                                                    "crypto-market"
+                                                                                                  ? await runCryptoMarketIngestion(
+                                                                                                      new FreeCryptoMarketProvider(
+                                                                                                        env.BIRDEYE_API_KEY
+                                                                                                          ? new BirdeyeLiveMarketProvider(
+                                                                                                              env.BIRDEYE_API_KEY,
+                                                                                                              new DexScreenerProvider(),
+                                                                                                            )
+                                                                                                          : new DexScreenerProvider(),
+                                                                                                        new GeckoTerminalProvider(),
                                                                                                       ),
                                                                                                       repository,
-                                                                                                      env.WALLET_EVIDENCE_MAX_TOKENS,
                                                                                                     )
-                                                                                                  : (() => {
-                                                                                                      throw new Error(
-                                                                                                        "BIRDEYE_API_KEY is required for wallet-evidence",
-                                                                                                      );
-                                                                                                    })()
-                                                                                                : await runWalletPnl(
-                                                                                                    env.BIRDEYE_API_KEY
-                                                                                                      ? new BirdeyeHistoricalPriceProvider(
-                                                                                                          env.BIRDEYE_API_KEY,
+                                                                                                  : job ===
+                                                                                                      "wallet-evidence"
+                                                                                                    ? env.BIRDEYE_API_KEY
+                                                                                                      ? await runWalletEvidence(
+                                                                                                          new BirdeyeHistoricalLiquidityProvider(
+                                                                                                            env.BIRDEYE_API_KEY,
+                                                                                                          ),
+                                                                                                          new BirdeyeTokenRiskProvider(
+                                                                                                            env.BIRDEYE_API_KEY,
+                                                                                                          ),
+                                                                                                          repository,
+                                                                                                          env.WALLET_EVIDENCE_MAX_TOKENS,
                                                                                                         )
-                                                                                                      : env.COINGECKO_API_KEY
-                                                                                                        ? new CoinGeckoHistoricalProvider(
-                                                                                                            env.COINGECKO_API_KEY,
-                                                                                                          )
-                                                                                                        : new GeckoTerminalProvider(),
-                                                                                                    repository,
-                                                                                                  );
+                                                                                                      : (() => {
+                                                                                                          throw new Error(
+                                                                                                            "BIRDEYE_API_KEY is required for wallet-evidence",
+                                                                                                          );
+                                                                                                        })()
+                                                                                                    : await runWalletPnl(
+                                                                                                        env.BIRDEYE_API_KEY
+                                                                                                          ? new BirdeyeHistoricalPriceProvider(
+                                                                                                              env.BIRDEYE_API_KEY,
+                                                                                                            )
+                                                                                                          : env.COINGECKO_API_KEY
+                                                                                                            ? new CoinGeckoHistoricalProvider(
+                                                                                                                env.COINGECKO_API_KEY,
+                                                                                                              )
+                                                                                                            : new GeckoTerminalProvider(),
+                                                                                                        repository,
+                                                                                                      );
   process.stdout.write(`${JSON.stringify(result)}\n`);
 }
 

@@ -52,6 +52,10 @@ import { runWalletEvidence } from "@/workers/wallet-evidence";
 import { runWalletClustering } from "@/workers/wallet-clustering";
 import { runStrategyValidationWindows } from "@/workers/strategy-validation-windows";
 import { runStrategyShadowTracking } from "@/workers/strategy-shadow-tracking";
+import {
+  runStrategyShadowExecution,
+  runStrategySignalProducer,
+} from "@/workers/strategy-runtime";
 
 export interface SchedulerNewsConfig {
   provider: NewsProvider;
@@ -187,6 +191,10 @@ export class ForecastSchedulerService {
 
   private async execute(job: any, now: string): Promise<any> {
     const repo = new IngestionRepository(this.db);
+    if (job.job_type === "STRATEGY_SIGNAL_PRODUCER")
+      return runStrategySignalProducer(this.db, now);
+    if (job.job_type === "STRATEGY_SHADOW_EXECUTION")
+      return runStrategyShadowExecution(this.db, now);
     if (job.job_type === "STRATEGY_VALIDATION_WINDOWS")
       return runStrategyValidationWindows(this.db, now);
     if (job.job_type === "STRATEGY_SHADOW_TRACKING")

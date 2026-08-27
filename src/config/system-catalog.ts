@@ -253,6 +253,26 @@ export const SYSTEM_CATALOG: SystemCatalogItem[] = [
       "Frozen hypotheses, out-of-sample gates, edge-decay checks, portfolio correlation and NO_TRADE runtime control.",
   },
   {
+    name: "Strategy Signal Producer",
+    kind: "RESEARCH",
+    backendJob: "strategy_signal_producer",
+    schedulerType: "STRATEGY_SIGNAL_PRODUCER",
+    frontend: "Strategy Validation",
+    route: "/strategy-validation",
+    description:
+      "Creates immutable shadow-only signals from approved validation evidence; NO_TRADE is the default.",
+  },
+  {
+    name: "Strategy Shadow Execution",
+    kind: "RESEARCH",
+    backendJob: "strategy_shadow_execution",
+    schedulerType: "STRATEGY_SHADOW_EXECUTION",
+    frontend: "Strategy Validation",
+    route: "/strategy-validation",
+    description:
+      "Tracks modeled and stress fills without sending exchange or broker orders.",
+  },
+  {
     name: "Expert Knowledge",
     kind: "INTELLIGENCE",
     backendJob: "expert_knowledge",

@@ -4,7 +4,19 @@ import styles from "./strategy-validation.module.css";
 export const dynamic = "force-dynamic";
 export default async function Page() {
   const db = createServiceClient();
-  const [v, r, h, p, d, e, plans, shadow] = await Promise.all([
+  const [
+    v,
+    r,
+    h,
+    p,
+    d,
+    e,
+    plans,
+    shadow,
+    signalEvaluations,
+    signals,
+    shadowTrades,
+  ] = await Promise.all([
     db
       .from("strategy_validation_runs")
       .select("*,strategy_definitions(name,strategy_key,version)")
@@ -49,6 +61,27 @@ export default async function Page() {
       .select("*,strategy_definitions(name)")
       .order("created_at", { ascending: false })
       .limit(20),
+    db
+      .from("strategy_signal_evaluations")
+      .select(
+        "id,decision,blockers,information_cutoff_at,strategy_definitions(name)",
+      )
+      .order("created_at", { ascending: false })
+      .limit(20),
+    db
+      .from("strategy_runtime_signals")
+      .select(
+        "id,side,asset_id,setup_at,entry,stop,target,strategy_definitions(name)",
+      )
+      .order("created_at", { ascending: false })
+      .limit(20),
+    db
+      .from("strategy_shadow_trade_revisions")
+      .select(
+        "id,signal_id,revision_number,state,exit_reason,modeled_r,stress_r,information_cutoff_at",
+      )
+      .order("created_at", { ascending: false })
+      .limit(30),
   ]);
   const vr: any[] = v.data ?? [],
     rr: any[] = r.data ?? [],
@@ -218,6 +251,65 @@ export default async function Page() {
           <Empty text="No runtime assessment exists. Missing evidence remains UNKNOWN and trading remains blocked." />
         )}
       </Panel>
+      <section className={styles.grid}>
+        <Panel
+          title={`${signals.data?.length ?? 0} immutable signals`}
+          label="STRATEGY SIGNAL PRODUCER"
+          side="SHADOW ONLY"
+        >
+          {signalEvaluations.data?.length ? (
+            <History
+              rows={signalEvaluations.data as any[]}
+              render={(x: any) => ({
+                name: rel(x.strategy_definitions)?.name ?? "Strategy",
+                detail: x.blockers?.length
+                  ? x.blockers.join(" · ")
+                  : `Cutoff ${date(x.information_cutoff_at)}`,
+                status: x.decision,
+                decision:
+                  x.decision === "SIGNAL_CREATED"
+                    ? "APPROVED"
+                    : "INSUFFICIENT_DATA",
+              })}
+            />
+          ) : (
+            <Empty text="No signal evaluation exists yet. NO_TRADE remains the safe default." />
+          )}
+          <footer>
+            Only APPROVED validation plus SHADOW_ONLY runtime governance can
+            create a signal. This worker cannot place a live order.
+          </footer>
+        </Panel>
+        <Panel
+          title="Modeled vs stress"
+          label="SHADOW EXECUTION"
+          side="NO EXCHANGE"
+        >
+          {shadowTrades.data?.length ? (
+            <History
+              rows={shadowTrades.data as any[]}
+              render={(x: any) => ({
+                name: `${x.state} · revision ${x.revision_number}`,
+                detail:
+                  x.state === "CLOSED"
+                    ? `${x.exit_reason} · modeled ${rValue(x.modeled_r)} · stress ${rValue(x.stress_r)}`
+                    : `Awaiting point-in-time exit evidence · ${date(x.information_cutoff_at)}`,
+                status: x.state,
+                decision:
+                  x.state === "CLOSED" && Number(x.stress_r) > 0
+                    ? "APPROVED"
+                    : "INSUFFICIENT_DATA",
+              })}
+            />
+          ) : (
+            <Empty text="No shadow trade exists because no approved runtime signal has fired." />
+          )}
+          <footer>
+            Modeled and stressed fills are immutable research observations,
+            never account orders.
+          </footer>
+        </Panel>
+      </section>
       <Panel title="Validation evidence" label="IMMUTABLE HISTORY">
         {vr.length ? (
           <History
@@ -316,4 +408,8 @@ function pct(x: unknown) {
   return x != null && Number.isFinite(n)
     ? `${(n * 100).toFixed(2)}%`
     : "UNKNOWN";
+}
+function rValue(x: unknown) {
+  const n = Number(x);
+  return x != null && Number.isFinite(n) ? `${n.toFixed(2)}R` : "UNKNOWN";
 }
