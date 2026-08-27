@@ -18,6 +18,7 @@ export default async function Page() {
     shadowTrades,
     promotions,
     lifecycle,
+    researchCycles,
   ] = await Promise.all([
     db
       .from("strategy_validation_runs")
@@ -86,6 +87,7 @@ export default async function Page() {
       .limit(30),
     db.from("strategy_promotion_evaluations").select("id,decision,from_state,target_state,required_phase,blockers,information_cutoff_at,strategy_definitions(name)").order("created_at",{ascending:false}).limit(20),
     db.from("strategy_lifecycle_revisions").select("id,state,revision_number,information_cutoff_at,strategy_definitions(name)").order("created_at",{ascending:false}).limit(20),
+    db.from("strategy_research_cycle_runs").select("id,status,blockers,progress,information_cutoff_at,strategy_definitions(name,strategy_key,version),strategy_hypotheses(hypothesis_version)").order("created_at",{ascending:false}).limit(30),
   ]);
   const vr: any[] = v.data ?? [],
     rr: any[] = r.data ?? [],
@@ -128,6 +130,51 @@ export default async function Page() {
           label: `${rel(x.strategy_definitions)?.name ?? "Strategy"} · ${rel(x.assets)?.symbol ?? "Asset"} · ${x.trade_count} trades · ${date(x.information_cutoff_at)}`,
         }))}
       />
+      <section className={styles.grid}>
+        <Panel
+          title="Research queue"
+          label="STRATEGY RESEARCH CYCLE"
+          side="15 MIN"
+        >
+          {researchCycles.data?.length ? (
+            <History
+              rows={researchCycles.data as any[]}
+              render={(x: any) => {
+                const progress = x.progress ?? {};
+                const definition = rel(x.strategy_definitions);
+                return {
+                  name: `${definition?.name ?? "Strategy"} v${definition?.version ?? "?"}`,
+                  detail: `${progress.trades ?? 0}/${progress.requiredTrades ?? 30} trades · ${progress.setups ?? 0} setups · cutoff ${date(x.information_cutoff_at)}`,
+                  status: x.status,
+                  decision:
+                    x.status === "READY_FOR_VALIDATION"
+                      ? "APPROVED"
+                      : x.status === "REJECTED"
+                        ? "REJECTED"
+                        : "INSUFFICIENT_DATA",
+                };
+              }}
+            />
+          ) : (
+            <Empty text="The automated research cycle has not evaluated its first alternative strategy yet." />
+          )}
+          <footer>
+            Rejected definitions are excluded. Each alternative gets its own
+            immutable hypothesis and evaluation evidence before validation.
+          </footer>
+        </Panel>
+        <Panel title="No threshold hunting" label="RESEARCH INVARIANTS" side="V1">
+          <div className={styles.timeline}>
+            {["Rejected history remains immutable", "One hypothesis per rule version", "Minimum sample remains enforced", "No automatic capital promotion"].map((x, i) => (
+              <div key={x}>
+                <b>{String(i + 1).padStart(2, "0")}</b>
+                <span>{x}</span>
+              </div>
+            ))}
+          </div>
+          <footer>New evidence can create a new version, never rewrite the failed one.</footer>
+        </Panel>
+      </section>
       <section className={styles.grid}>
         <Panel title={lifecycle.data?.[0]?.state ?? "RESEARCH"} label="AUTOMATED PROMOTION" side="STRICT SEQUENCE">
           {promotions.data?.length ? <History rows={promotions.data as any[]} render={(x:any)=>({name:rel(x.strategy_definitions)?.name??"Strategy",detail:x.blockers?.length?x.blockers.join(" · "):`${x.from_state} → ${x.target_state}`,status:x.decision,decision:x.decision==="PROMOTE"?"APPROVED":x.decision==="REJECT"?"REJECTED":"INSUFFICIENT_DATA"})}/> : <Empty text="Promotion worker has not evaluated a strategy yet."/>}

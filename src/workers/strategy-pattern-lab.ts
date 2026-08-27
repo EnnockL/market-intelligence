@@ -13,13 +13,15 @@ export async function runStrategyPatternLab(db: SupabaseClient, symbol = process
   return new StrategyPatternLabService(db).run(definition, asset.id, cutoffAt);
 }
 
-export async function runStrategyResearchCycle(db: SupabaseClient, cutoffAt = new Date().toISOString()) {
+export async function runStrategyResearchCycle(db: SupabaseClient, cutoffAt = new Date().toISOString(), excludedDefinitions = new Set<string>()) {
   const assetsResult = await db.from("assets").select("id,symbol,kind").eq("kind", "stock").order("symbol");
   if (assetsResult.error) throw assetsResult.error;
   const assets = assetsResult.data ?? [];
   if (!assets.length) return { status: "INSUFFICIENT_DATA", reason: "NO_STOCK_ASSETS" };
 
-  const stockStrategies = TOP_TEN_RESEARCH_STRATEGIES.filter(strategy => strategy.market === "US_STOCKS" || strategy.market === "GENERIC");
+  const stockStrategies = TOP_TEN_RESEARCH_STRATEGIES.filter(strategy =>
+    (strategy.market === "US_STOCKS" || strategy.market === "GENERIC") &&
+    !excludedDefinitions.has(`${strategy.strategyId}:${strategy.version}`));
   const recentResult = await db.from("strategy_evaluation_runs")
     .select("asset_id,information_cutoff_at,strategy_definitions(strategy_key,version)")
     .order("information_cutoff_at", { ascending: false })
