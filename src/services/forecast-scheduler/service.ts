@@ -58,6 +58,7 @@ import {
 } from "@/workers/strategy-runtime";
 import { runStrategyPromotion } from "@/workers/strategy-promotion";
 import { runAutomatedStrategyResearchCycle } from "@/workers/strategy-research-cycle";
+import { runStrategyCandidateTriage } from "@/workers/strategy-candidate-triage";
 
 export interface SchedulerNewsConfig {
   provider: NewsProvider;
@@ -205,6 +206,8 @@ export class ForecastSchedulerService {
       return runStrategyShadowTracking(this.db, now);
     if (job.job_type === "STRATEGY_RESEARCH_CYCLE")
       return runAutomatedStrategyResearchCycle(this.db, now);
+    if (job.job_type === "STRATEGY_CANDIDATE_TRIAGE")
+      return runStrategyCandidateTriage(this.db, now);
     if (job.job_type === "POOL_DISCOVERY")
       return runPoolDiscovery(
         this.db,

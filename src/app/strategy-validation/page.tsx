@@ -19,6 +19,7 @@ export default async function Page() {
     promotions,
     lifecycle,
     researchCycles,
+    triageRuns,
   ] = await Promise.all([
     db
       .from("strategy_validation_runs")
@@ -88,6 +89,7 @@ export default async function Page() {
     db.from("strategy_promotion_evaluations").select("id,decision,from_state,target_state,required_phase,blockers,information_cutoff_at,strategy_definitions(name)").order("created_at",{ascending:false}).limit(20),
     db.from("strategy_lifecycle_revisions").select("id,state,revision_number,information_cutoff_at,strategy_definitions(name)").order("created_at",{ascending:false}).limit(20),
     db.from("strategy_research_cycle_runs").select("id,status,blockers,progress,information_cutoff_at,strategy_definitions(name,strategy_key,version),strategy_hypotheses(hypothesis_version)").order("created_at",{ascending:false}).limit(30),
+    db.from("strategy_candidate_triage_runs").select("id,recommendation,rank,metrics,blockers,information_cutoff_at,strategy_definitions(name,strategy_key,version)").order("information_cutoff_at",{ascending:false}).order("rank",{ascending:true,nullsFirst:false}).limit(30),
   ]);
   const vr: any[] = v.data ?? [],
     rr: any[] = r.data ?? [],
@@ -130,6 +132,27 @@ export default async function Page() {
           label: `${rel(x.strategy_definitions)?.name ?? "Strategy"} · ${rel(x.assets)?.symbol ?? "Asset"} · ${x.trade_count} trades · ${date(x.information_cutoff_at)}`,
         }))}
       />
+      <section className={styles.grid}>
+        <Panel title="Candidate triage" label="DETERMINISTIC RESEARCH PRIORITY" side="V1">
+          {triageRuns.data?.length ? (
+            <History rows={triageRuns.data as any[]} render={(x: any) => {
+              const definition = rel(x.strategy_definitions);
+              const metrics = x.metrics ?? {};
+              return {
+                name: `${x.rank ? `#${x.rank} · ` : ""}${definition?.name ?? "Strategy"} v${definition?.version ?? "?"}`,
+                detail: `${metrics.tradeCount ?? 0} trades · ${metrics.assetCount ?? 0} assets · EV ${rValue(metrics.expectedValueR)} · PF ${num(metrics.profitFactor)}${x.blockers?.length ? ` · ${x.blockers.join(" · ")}` : ""}`,
+                status: x.recommendation,
+                decision: x.recommendation === "PRIORITIZE" ? "APPROVED" : x.recommendation === "EXCLUDED_REJECTED" || x.recommendation === "DO_NOT_PRIORITIZE" ? "REJECTED" : "INSUFFICIENT_DATA",
+              };
+            }}/>
+          ) : <Empty text="Candidate triage has not produced its first immutable ranking yet."/>}
+          <footer>Priority means “research next”, never approved edge or permission to trade. Rejected versions remain excluded.</footer>
+        </Panel>
+        <Panel title="Coverage before confidence" label="TRIAGE POLICY" side="NO THRESHOLD CHANGES">
+          <div className={styles.timeline}>{["Minimum 30 deduplicated trades","Minimum 1,000 candles per included asset","Minimum two assets","Positive raw EV and profit factor above one"].map((x,i)=><div key={x}><b>{String(i+1).padStart(2,"0")}</b><span>{x}</span></div>)}</div>
+          <footer>Validation, confidence intervals, regimes, costs and drawdown remain separate stricter gates.</footer>
+        </Panel>
+      </section>
       <section className={styles.grid}>
         <Panel
           title="Research queue"

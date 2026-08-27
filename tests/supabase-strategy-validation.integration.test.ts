@@ -63,6 +63,7 @@ suite("Supabase strategy validation and runtime governance v1", () => {
       promotions,
       lifecycle,
       researchCycles,
+      triageRuns,
       jobs,
     ] = await Promise.all([
       db.from("strategy_validation_window_plans").select("id").limit(1),
@@ -85,6 +86,7 @@ suite("Supabase strategy validation and runtime governance v1", () => {
       db.from("strategy_promotion_evaluations").select("id,decision,blockers").limit(1),
       db.from("strategy_lifecycle_revisions").select("id,state,revision_number").limit(1),
       db.from("strategy_research_cycle_runs").select("id,status,progress,result_hash").limit(1),
+      db.from("strategy_candidate_triage_runs").select("id,recommendation,metrics,result_hash").limit(1),
       db
         .from("scheduled_jobs")
         .select("job_key,job_type,enabled")
@@ -95,6 +97,7 @@ suite("Supabase strategy validation and runtime governance v1", () => {
           "strategy-shadow-execution-1m",
           "strategy-validation-promotion-15m",
           "strategy-research-cycle-15m",
+          "strategy-candidate-triage-1h",
         ]),
     ]);
 
@@ -107,6 +110,7 @@ suite("Supabase strategy validation and runtime governance v1", () => {
     expect(promotions.error).toBeNull();
     expect(lifecycle.error).toBeNull();
     expect(researchCycles.error).toBeNull();
+    expect(triageRuns.error).toBeNull();
     expect(jobs.error).toBeNull();
     expect(jobs.data).toEqual(
       expect.arrayContaining([
@@ -133,6 +137,10 @@ suite("Supabase strategy validation and runtime governance v1", () => {
         expect.objectContaining({
           job_key: "strategy-research-cycle-15m",
           enabled: true,
+        }),
+        expect.objectContaining({
+          job_key: "strategy-candidate-triage-1h",
+          enabled: false,
         }),
       ]),
     );
