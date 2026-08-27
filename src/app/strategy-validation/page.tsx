@@ -16,6 +16,8 @@ export default async function Page() {
     signalEvaluations,
     signals,
     shadowTrades,
+    promotions,
+    lifecycle,
   ] = await Promise.all([
     db
       .from("strategy_validation_runs")
@@ -82,6 +84,8 @@ export default async function Page() {
       )
       .order("created_at", { ascending: false })
       .limit(30),
+    db.from("strategy_promotion_evaluations").select("id,decision,from_state,target_state,required_phase,blockers,information_cutoff_at,strategy_definitions(name)").order("created_at",{ascending:false}).limit(20),
+    db.from("strategy_lifecycle_revisions").select("id,state,revision_number,information_cutoff_at,strategy_definitions(name)").order("created_at",{ascending:false}).limit(20),
   ]);
   const vr: any[] = v.data ?? [],
     rr: any[] = r.data ?? [],
@@ -124,6 +128,16 @@ export default async function Page() {
           label: `${rel(x.strategy_definitions)?.name ?? "Strategy"} · ${rel(x.assets)?.symbol ?? "Asset"} · ${x.trade_count} trades · ${date(x.information_cutoff_at)}`,
         }))}
       />
+      <section className={styles.grid}>
+        <Panel title={lifecycle.data?.[0]?.state ?? "RESEARCH"} label="AUTOMATED PROMOTION" side="STRICT SEQUENCE">
+          {promotions.data?.length ? <History rows={promotions.data as any[]} render={(x:any)=>({name:rel(x.strategy_definitions)?.name??"Strategy",detail:x.blockers?.length?x.blockers.join(" · "):`${x.from_state} → ${x.target_state}`,status:x.decision,decision:x.decision==="PROMOTE"?"APPROVED":x.decision==="REJECT"?"REJECTED":"INSUFFICIENT_DATA"})}/> : <Empty text="Promotion worker has not evaluated a strategy yet."/>}
+          <footer>Learning → freeze → out-of-sample → demo → approved shadow. Missing evidence always blocks promotion.</footer>
+        </Panel>
+        <Panel title="No silent skips" label="PROMOTION GUARANTEES" side="V1">
+          <div className={styles.timeline}>{["Immutable evidence","Point-in-time cutoff","Fixed thresholds","Runtime gates remain active"].map((x,i)=><div key={x}><b>{String(i+1).padStart(2,"0")}</b><span>{x}</span></div>)}</div>
+          <footer>Approved shadow authorizes research observation only; it never authorizes live execution.</footer>
+        </Panel>
+      </section>
       <section className={styles.grid}>
         <Panel
           title="Next honest window"

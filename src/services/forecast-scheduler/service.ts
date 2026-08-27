@@ -56,6 +56,7 @@ import {
   runStrategyShadowExecution,
   runStrategySignalProducer,
 } from "@/workers/strategy-runtime";
+import { runStrategyPromotion } from "@/workers/strategy-promotion";
 
 export interface SchedulerNewsConfig {
   provider: NewsProvider;
@@ -195,6 +196,8 @@ export class ForecastSchedulerService {
       return runStrategySignalProducer(this.db, now);
     if (job.job_type === "STRATEGY_SHADOW_EXECUTION")
       return runStrategyShadowExecution(this.db, now);
+    if (job.job_type === "STRATEGY_VALIDATION_PROMOTION")
+      return runStrategyPromotion(this.db, now);
     if (job.job_type === "STRATEGY_VALIDATION_WINDOWS")
       return runStrategyValidationWindows(this.db, now);
     if (job.job_type === "STRATEGY_SHADOW_TRACKING")

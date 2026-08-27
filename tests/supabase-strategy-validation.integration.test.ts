@@ -60,6 +60,8 @@ suite("Supabase strategy validation and runtime governance v1", () => {
       signalEvaluations,
       signals,
       shadowTrades,
+      promotions,
+      lifecycle,
       jobs,
     ] = await Promise.all([
       db.from("strategy_validation_window_plans").select("id").limit(1),
@@ -79,6 +81,8 @@ suite("Supabase strategy validation and runtime governance v1", () => {
         .from("strategy_shadow_trade_revisions")
         .select("id,signal_id,revision_number,state")
         .limit(1),
+      db.from("strategy_promotion_evaluations").select("id,decision,blockers").limit(1),
+      db.from("strategy_lifecycle_revisions").select("id,state,revision_number").limit(1),
       db
         .from("scheduled_jobs")
         .select("job_key,job_type,enabled")
@@ -87,6 +91,7 @@ suite("Supabase strategy validation and runtime governance v1", () => {
           "strategy-shadow-tracking-5m",
           "strategy-signal-producer-1m",
           "strategy-shadow-execution-1m",
+          "strategy-validation-promotion-15m",
         ]),
     ]);
 
@@ -96,6 +101,8 @@ suite("Supabase strategy validation and runtime governance v1", () => {
     expect(signalEvaluations.error).toBeNull();
     expect(signals.error).toBeNull();
     expect(shadowTrades.error).toBeNull();
+    expect(promotions.error).toBeNull();
+    expect(lifecycle.error).toBeNull();
     expect(jobs.error).toBeNull();
     expect(jobs.data).toEqual(
       expect.arrayContaining([
@@ -113,6 +120,10 @@ suite("Supabase strategy validation and runtime governance v1", () => {
         }),
         expect.objectContaining({
           job_key: "strategy-shadow-execution-1m",
+          enabled: true,
+        }),
+        expect.objectContaining({
+          job_key: "strategy-validation-promotion-15m",
           enabled: true,
         }),
       ]),
