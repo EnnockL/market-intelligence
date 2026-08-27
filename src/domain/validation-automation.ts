@@ -111,14 +111,15 @@ export function shadowObservation(input: {
     fills: number;
     rejected: number;
   };
+  strategyCounts?: { proposals:number;intents:number;orders:number;fills:number };
 }) {
-  const attributionStatus = "UNKNOWN" as const;
+  const attributionStatus = input.strategyCounts ? "KNOWN" as const : "UNKNOWN" as const;
   const metrics = {
     ...input.globalCounts,
-    attributableProposals: null,
-    attributableIntents: null,
-    attributableOrders: null,
-    attributableFills: null,
+    attributableProposals: input.strategyCounts?.proposals??null,
+    attributableIntents: input.strategyCounts?.intents??null,
+    attributableOrders: input.strategyCounts?.orders??null,
+    attributableFills: input.strategyCounts?.fills??null,
   };
   const body = {
     trackingVersion: SHADOW_TRACKING_VERSION,

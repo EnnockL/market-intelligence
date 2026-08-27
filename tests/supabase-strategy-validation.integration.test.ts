@@ -34,9 +34,10 @@ suite("Supabase strategy validation and runtime governance v1", () => {
   });
 
   it("exposes automated window and shadow tracking stores and scheduler jobs", async () => {
-    const [plans, observations, jobs] = await Promise.all([
+    const [plans, observations, attributions, jobs] = await Promise.all([
       db.from("strategy_validation_window_plans").select("id").limit(1),
       db.from("strategy_shadow_observations").select("id").limit(1),
+      db.from("strategy_attribution_contexts").select("id,status,strategy_definition_id,strategy_version,validation_run_id").limit(1),
       db
         .from("scheduled_jobs")
         .select("job_key,job_type,enabled")
@@ -45,6 +46,7 @@ suite("Supabase strategy validation and runtime governance v1", () => {
 
     expect(plans.error).toBeNull();
     expect(observations.error).toBeNull();
+    expect(attributions.error).toBeNull();
     expect(jobs.error).toBeNull();
     expect(jobs.data).toEqual(
       expect.arrayContaining([

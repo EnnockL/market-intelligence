@@ -162,6 +162,10 @@ export class ValidationAutomationService {
       fills = fillRows.count ?? 0;
     let created = 0;
     for (const row of runtime.data ?? []) {
+      const contexts=await this.db.from("strategy_attribution_contexts").select("id").eq("strategy_definition_id",row.strategy_definition_id).eq("status","KNOWN").lte("available_at",end);if(contexts.error)throw contexts.error;
+      const attributionIds=(contexts.data??[]).map(x=>x.id);
+      const count=async(table:string)=>{if(!attributionIds.length)return 0;const result=await this.db.from(table).select("id",{count:"exact",head:true}).in("strategy_attribution_id",attributionIds).gte("created_at",start).lt("created_at",end);if(result.error)throw result.error;return result.count??0};
+      const strategyCounts={proposals:await count("trade_proposals"),intents:await count("execution_intents"),orders:await count("execution_orders"),fills:await count("execution_fills")};
       const mode = row.runtime_state === "DEMO_VALIDATION" ? "DEMO" : "SHADOW",
         observation = shadowObservation({
           strategyDefinitionId: row.strategy_definition_id,
@@ -176,6 +180,7 @@ export class ValidationAutomationService {
             fills,
             rejected: rejected.count ?? 0,
           },
+          strategyCounts,
         });
       const saved = await this.db
         .from("strategy_shadow_observations")
@@ -192,12 +197,7 @@ export class ValidationAutomationService {
             information_cutoff_at: end,
             available_at: end,
             global_metrics: observation.metrics,
-            strategy_metrics: {
-              proposals: null,
-              intents: null,
-              orders: null,
-              fills: null,
-            },
+            strategy_metrics: strategyCounts,
             evidence_refs: [],
             result_hash: observation.resultHash,
           },
@@ -216,7 +216,7 @@ export class ValidationAutomationService {
         fills,
         rejected: rejected.count ?? 0,
       },
-      attribution: "UNKNOWN",
+      attribution: "KNOWN_WHEN_CONTEXT_EXISTS",
     };
   }
 }
