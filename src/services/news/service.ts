@@ -22,8 +22,16 @@ export class NewsIngestionService {
     const observationByKey = new Map<string, any>(), observationByCanonical = new Map<string, any>();
     for (const row of existingRows ?? []) { observationByKey.set(`${row.asset_id}:${row.observation_key}`, row); observationByCanonical.set(`${row.asset_id}:${row.canonical_url}`, row); }
     const observationIds = (existingRows ?? []).map((row: any) => row.id);
-    const { data: revisionRows, error: revisionError } = observationIds.length ? await this.db.from("news_article_revisions").select("news_observation_id,revision_number,content_hash").in("news_observation_id", observationIds).order("revision_number", { ascending: false }) : { data: [], error: null };
-    if (revisionError) throw revisionError;
+    const revisionRows: any[] = [];
+    for (const observationIdBatch of chunkNewsObservationIds(observationIds)) {
+      const revisions = await this.db
+        .from("news_article_revisions")
+        .select("news_observation_id,revision_number,content_hash")
+        .in("news_observation_id", observationIdBatch)
+        .order("revision_number", { ascending: false });
+      if (revisions.error) throw revisions.error;
+      revisionRows.push(...(revisions.data ?? []));
+    }
     const latestByObservation = new Map<string, any>(); for (const row of revisionRows ?? []) if (!latestByObservation.has(row.news_observation_id)) latestByObservation.set(row.news_observation_id, row);
     let inserted = 0, revisions = 0, catalysts = 0, unchanged = 0;
     const transport = new PostgresOutboxTransport(this.db), watch = new ForecastCatalystService(this.db);
@@ -50,3 +58,10 @@ export class NewsIngestionService {
   }
 }
 function matchSource(canonicalUrl: string, sources: any[]) { let domain: string; try { domain = new URL(canonicalUrl).hostname.replace(/^www\./, ""); } catch { return null; } return sources.filter((row) => domain === row.domain || domain.endsWith(`.${row.domain}`)).sort((a, b) => b.domain.length - a.domain.length)[0] ?? null; }
+
+export function chunkNewsObservationIds(ids: string[], size = 100) {
+  const batches: string[][] = [];
+  for (let index = 0; index < ids.length; index += size)
+    batches.push(ids.slice(index, index + size));
+  return batches;
+}
