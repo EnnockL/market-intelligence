@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { MarketDataProvider, ProviderError, StockQuote } from "./provider";
+import { fetchWithRetry, type FetchRetryOptions } from "@/services/providers/fetch-with-retry";
 
 const quoteSchema = z.object({
   c: z.number(), d: z.number().nullable().optional(), dp: z.number().nullable().optional(),
@@ -11,7 +12,7 @@ type Fetch = typeof fetch;
 
 export class FinnhubProvider implements MarketDataProvider {
   readonly name = "finnhub";
-  constructor(private readonly apiKey: string, private readonly fetcher: Fetch = fetch) {}
+  constructor(private readonly apiKey: string, private readonly fetcher: Fetch = fetch, private readonly retryOptions: FetchRetryOptions = {}) {}
 
   async getQuotes(symbols: string[]): Promise<StockQuote[]> {
     const quotes: StockQuote[] = [];
@@ -22,7 +23,7 @@ export class FinnhubProvider implements MarketDataProvider {
   private async getQuote(symbol: string): Promise<StockQuote> {
     let response: Response;
     try {
-      response = await this.fetcher(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${encodeURIComponent(this.apiKey)}`);
+      response = await fetchWithRetry(() => this.fetcher(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${encodeURIComponent(this.apiKey)}`), this.retryOptions);
     } catch (error) {
       throw new ProviderError(`Finnhub network failure for ${symbol}: ${error instanceof Error ? error.message : "unknown error"}`, this.name, "unavailable", true);
     }
@@ -50,4 +51,3 @@ export class FinnhubProvider implements MarketDataProvider {
 function parseNumberHeader(value: string | null) { const parsed = value === null ? NaN : Number(value); return Number.isFinite(parsed) ? parsed : null; }
 function parseResetHeader(value: string | null) { const seconds = parseNumberHeader(value); return seconds === null ? null : new Date(seconds * 1000).toISOString(); }
 function parseRetryAfter(value: string | null) { const seconds = parseNumberHeader(value); return seconds === null ? null : seconds * 1000; }
-

@@ -1,16 +1,17 @@
 import { z } from "zod";
 import { ProviderError } from "@/services/market-data/provider";
 import { timeframeSeconds, type CandleBatch, type CandleRequest, type HistoricalCandleProvider, type ProviderCandle } from "./provider";
+import { fetchWithRetry, type FetchRetryOptions } from "@/services/providers/fetch-with-retry";
 
 const schema = z.object({ s: z.enum(["ok", "no_data"]), t: z.array(z.number()).optional(), o: z.array(z.number()).optional(), h: z.array(z.number()).optional(), l: z.array(z.number()).optional(), c: z.array(z.number()).optional(), v: z.array(z.number().nullable()).optional() });
 export class FinnhubCandleProvider implements HistoricalCandleProvider {
   readonly name = "finnhub-candles";
-  constructor(private apiKey: string, private fetcher: typeof fetch = fetch, private baseUrl = "https://finnhub.io/api/v1") {}
+  constructor(private apiKey: string, private fetcher: typeof fetch = fetch, private baseUrl = "https://finnhub.io/api/v1", private retryOptions: FetchRetryOptions = {}) {}
   async getCandles(request: CandleRequest): Promise<CandleBatch> {
     if (request.instrumentKind === "CRYPTO_POOL") throw new ProviderError("Finnhub provider does not support pool candles", this.name, "invalid_response", false);
     const resolution = resolutionFor(request.timeframe), from = Math.floor(Date.parse(request.cursor ?? request.startsAt) / 1000), to = Math.floor(Date.parse(request.endsAt) / 1000);
     const path = request.instrumentKind === "FOREX" ? "forex/candle" : "stock/candle";
-    const response = await this.fetcher(`${this.baseUrl}/${path}?symbol=${encodeURIComponent(request.providerSymbol)}&resolution=${resolution}&from=${from}&to=${to}&token=${encodeURIComponent(this.apiKey)}`);
+    const response = await fetchWithRetry(() => this.fetcher(`${this.baseUrl}/${path}?symbol=${encodeURIComponent(request.providerSymbol)}&resolution=${resolution}&from=${from}&to=${to}&token=${encodeURIComponent(this.apiKey)}`), this.retryOptions);
     if (response.status === 429) throw new ProviderError("Finnhub candle rate limit reached", this.name, "rate_limited", true, 429, retryMs(response.headers.get("retry-after")));
     if (response.status === 401 || response.status === 403) throw new ProviderError("Finnhub candle entitlement or API key rejected", this.name, "unauthorized", false, response.status);
     if (!response.ok) throw new ProviderError(`Finnhub candles returned HTTP ${response.status}`, this.name, "unavailable", response.status >= 500, response.status);
