@@ -1,4 +1,78 @@
-import{describe,expect,it}from"vitest";import{BASELINE_COHORT_POLICY,buildHistoricalBaseline,calculateForwardReturn,type BaselineFeature,type HistoricalExample}from"../src/domain/baseline-forecast";
-const feature:BaselineFeature={priceMomentum5m:10,volumeMultiple5m:2.5,liquidityUsd:50_000,marketCapUsd:500_000,dataQuality:90};
-const examples=(count:number):HistoricalExample[]=>Array.from({length:count},(_,i)=>({sourceId:`o${String(i).padStart(2,"0")}`,assetId:`a${i}`,anchorAt:`2026-01-${String(i%28+1).padStart(2,"0")}T00:00:00Z`,outcomeAt:`2026-01-${String(i%28+1).padStart(2,"0")}T00:30:00Z`,availableAt:`2026-02-${String(i%28+1).padStart(2,"0")}T00:00:00Z`,features:feature,returnPct:i-10}));
-describe("baseline forecast v1",()=>{it("returns insufficient data below minimum sample",()=>expect(buildHistoricalBaseline(feature,examples(5),"30m").reason).toBe("COHORT_SAMPLE_INSUFFICIENT"));it("returns an empirical distribution",()=>{const result=buildHistoricalBaseline(feature,examples(BASELINE_COHORT_POLICY.minimumSampleSize),"30m");expect(result.status).toBe("AVAILABLE");expect(result.sampleSize).toBe(30);expect(result.expectedReturn).toBeCloseTo(4.5);expect(result.probabilityPositive).toBeCloseTo(19/30*100)});it("does not compare incomplete target features",()=>expect(buildHistoricalBaseline({...feature,liquidityUsd:null},examples(40),"5m").reason).toBe("TARGET_FEATURES_INCOMPLETE"));it("excludes future-known examples",()=>{const rows=examples(30);rows[0]={...rows[0],availableAt:"2027-01-01T00:00:00Z"};expect(buildHistoricalBaseline(feature,rows,"2h","2026-12-31T00:00:00Z").sampleSize).toBe(29)});it("rebuilds deterministically",()=>expect(buildHistoricalBaseline(feature,examples(30),"24h").modelHash).toBe(buildHistoricalBaseline(feature,[...examples(30)].reverse(),"24h").modelHash));it("calculates return",()=>expect(calculateForwardReturn(100,125)).toBe(25));});
+import { describe, expect, it } from "vitest";
+import {
+  BASELINE_COHORT_POLICY,
+  buildHistoricalBaseline,
+  calculateForwardReturn,
+  type BaselineFeature,
+  type HistoricalExample,
+} from "../src/domain/baseline-forecast";
+import { baselineRunSlot } from "../src/services/baseline-forecast/service";
+const feature: BaselineFeature = {
+  priceMomentum5m: 10,
+  volumeMultiple5m: 2.5,
+  liquidityUsd: 50_000,
+  marketCapUsd: 500_000,
+  dataQuality: 90,
+};
+const examples = (count: number): HistoricalExample[] =>
+  Array.from({ length: count }, (_, i) => ({
+    sourceId: `o${String(i).padStart(2, "0")}`,
+    assetId: `a${i}`,
+    anchorAt: `2026-01-${String((i % 28) + 1).padStart(2, "0")}T00:00:00Z`,
+    outcomeAt: `2026-01-${String((i % 28) + 1).padStart(2, "0")}T00:30:00Z`,
+    availableAt: `2026-02-${String((i % 28) + 1).padStart(2, "0")}T00:00:00Z`,
+    features: feature,
+    returnPct: i - 10,
+  }));
+describe("baseline forecast v1", () => {
+  it("returns insufficient data below minimum sample", () =>
+    expect(buildHistoricalBaseline(feature, examples(5), "30m").reason).toBe(
+      "COHORT_SAMPLE_INSUFFICIENT",
+    ));
+  it("returns an empirical distribution", () => {
+    const result = buildHistoricalBaseline(
+      feature,
+      examples(BASELINE_COHORT_POLICY.minimumSampleSize),
+      "30m",
+    );
+    expect(result.status).toBe("AVAILABLE");
+    expect(result.sampleSize).toBe(30);
+    expect(result.expectedReturn).toBeCloseTo(4.5);
+    expect(result.probabilityPositive).toBeCloseTo((19 / 30) * 100);
+  });
+  it("does not compare incomplete target features", () =>
+    expect(
+      buildHistoricalBaseline(
+        { ...feature, liquidityUsd: null },
+        examples(40),
+        "5m",
+      ).reason,
+    ).toBe("TARGET_FEATURES_INCOMPLETE"));
+  it("excludes future-known examples", () => {
+    const rows = examples(30);
+    rows[0] = { ...rows[0], availableAt: "2027-01-01T00:00:00Z" };
+    expect(
+      buildHistoricalBaseline(feature, rows, "2h", "2026-12-31T00:00:00Z")
+        .sampleSize,
+    ).toBe(29);
+  });
+  it("rebuilds deterministically", () =>
+    expect(
+      buildHistoricalBaseline(feature, examples(30), "24h").modelHash,
+    ).toBe(
+      buildHistoricalBaseline(feature, [...examples(30)].reverse(), "24h")
+        .modelHash,
+    ));
+  it("calculates return", () =>
+    expect(calculateForwardReturn(100, 125)).toBe(25));
+});
+describe("baseline scheduler slots", () => {
+  it("uses five-minute slots instead of reusing a whole hour", () => {
+    expect(baselineRunSlot("2026-09-01T19:03:09Z")).toBe(
+      "2026-09-01T19:00:00.000Z",
+    );
+    expect(baselineRunSlot("2026-09-01T19:34:50Z")).toBe(
+      "2026-09-01T19:30:00.000Z",
+    );
+  });
+});
