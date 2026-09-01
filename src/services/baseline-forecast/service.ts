@@ -109,6 +109,7 @@ export class BaselineForecastService {
           completed_at: new Date().toISOString(),
           forecasts_evaluated: evaluated,
           forecasts_available: available,
+          last_error: null,
         })
         .eq("id", run.id);
       if (saved.error) throw saved.error;
