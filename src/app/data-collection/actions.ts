@@ -3,15 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { createServiceClient } from "@/lib/supabase/server";
 import { SAFE_MANUAL_JOB_TYPES } from "@/domain/data-operations";
+import { requireOperatorPage } from "@/lib/operator-session";
 
 export type QueueState = { status: "idle" | "success" | "error"; message: string };
 
 export async function queueIngestionJob(_previous: QueueState, formData: FormData): Promise<QueueState> {
-  const configuredToken = process.env.DATA_OPERATIONS_OPERATOR_TOKEN;
-  const suppliedToken = String(formData.get("operatorToken") ?? "");
+  await requireOperatorPage("/data-collection");
   const jobKey = String(formData.get("jobKey") ?? "");
-  if (!configuredToken) return { status: "error", message: "Manual queueing is disabled until DATA_OPERATIONS_OPERATOR_TOKEN is configured." };
-  if (!suppliedToken || suppliedToken !== configuredToken) return { status: "error", message: "Invalid operator token." };
   if (!jobKey || jobKey.length > 120) return { status: "error", message: "Invalid job key." };
   const db = createServiceClient();
   const { data: job, error: readError } = await db.from("scheduled_jobs").select("id,job_type,locked_at,enabled").eq("job_key", jobKey).maybeSingle();

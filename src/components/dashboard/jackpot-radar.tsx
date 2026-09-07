@@ -1,11 +1,13 @@
 import Link from "next/link";
 import type { getJackpotData } from "@/data/jackpot-data";
+import { PanelUnavailable } from "./panel-loading";
 
 export function JackpotRadar({
   data,
 }: {
   data: Awaited<ReturnType<typeof getJackpotData>>;
 }) {
+  if (data.mode === "degraded" && !data.items.length) return <PanelUnavailable title="Jackpot Radar" />;
   return (
     <section className="radar-panel jackpot-panel" id="jackpot">
       <div className="panel-title jackpot-title">
@@ -20,6 +22,7 @@ export function JackpotRadar({
           {data.mode}
         </span>
       </div>
+      {data.mode === "degraded" && data.items.length > 0 ? <p className="discovery-note" role="alert">Delar av underlaget saknas. Tillgängliga kandidater visas, men okända värden är inte verifierade.</p> : null}
       {data.items.length ? (
         <>
           <div className="jackpot-head">

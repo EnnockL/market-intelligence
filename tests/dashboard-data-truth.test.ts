@@ -12,6 +12,7 @@ describe("dashboard data truth", () => {
   it("never presents missing or malformed timestamps as live", () => {
     expect(dataModeAt(null, now)).toBe("unavailable");
     expect(dataModeAt("not-a-date", now)).toBe("unavailable");
+    expect(dataModeAt(new Date(now + 1).toISOString(), now)).toBe("unavailable");
   });
 
   it("selects the newest valid provider timestamp deterministically", () => {

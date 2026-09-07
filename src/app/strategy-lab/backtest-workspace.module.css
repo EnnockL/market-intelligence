@@ -138,6 +138,7 @@
 }
 
 .actionSuccess,
+.actionWarning,
 .actionError {
   display: block;
   padding: 11px 12px;
@@ -147,7 +148,13 @@
 }
 
 .actionSuccess { border-color: #214d35; background: #10291c; color: #82e9ad; }
+.actionWarning { border-color: #625020; background: #28220f; color: #efd489; }
 .actionError { border-color: #633037; background: #35181b; color: #ff9da5; }
+
+.resultPicker { padding: 20px; display: grid; gap: 12px; }
+.resultPicker label { display: grid; gap: 8px; color: #a0a6a3; font-size: 13px; min-width: 0; }
+.resultPicker select { width: 100%; min-width: 0; min-height: 44px; padding: 10px; border: 1px solid #323734; border-radius: 10px; background: #0a0c0b; color: #eef1ef; color-scheme: dark; }
+.resultPicker p { margin: 0; color: #a0a6a3; font-size: 12px; line-height: 1.5; }
 
 @media (max-width: 1050px) {
   .workspaceGrid { grid-template-columns: 1fr; }

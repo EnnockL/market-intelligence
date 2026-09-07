@@ -1,10 +1,7 @@
-import { loadEnvConfig } from "@next/env";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { beforeAll, describe, expect, it } from "vitest";
 import { evaluateWalletIndependence } from "@/domain/wallet-clustering";
 import { WalletClusteringRepository } from "@/services/wallet-clustering/repository";
-
-loadEnvConfig(process.cwd());
 
 const enabled = process.env.RUN_SUPABASE_INTEGRATION === "1";
 const suite = enabled ? describe : describe.skip;

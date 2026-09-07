@@ -4,6 +4,9 @@
   padding: 24px 40px 90px;
   color: #f1f3f2;
 }
+.readNotice, .readError { padding: 12px 20px; font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.readNotice { color: #a4aea8; }
+.readError { color: #f2bf69; border-left: 3px solid #f2bf69; margin: 16px 20px; background: #201a10; }
 .hero,
 .panel,
 .summary {

@@ -8,7 +8,7 @@ export default async function SystemsPage(){
   const db=createServiceClient();
   const [{data:jobs},{data:runs}]=await Promise.all([
     db.from("scheduled_jobs").select("job_type,status,last_successful_run_at,last_heartbeat_at,locked_at,enabled"),
-    db.from("ingestion_runs").select("job_kind,status,records_processed,finished_at,error_message").order("started_at",{ascending:false}).limit(500),
+    db.from("ingestion_runs").select("job_kind,status,records_processed,finished_at").order("started_at",{ascending:false}).limit(500),
   ]);
   const jobMap=new Map((jobs??[]).map((job:any)=>[job.job_type,job]));
   const runMap=new Map<string,any>();for(const run of runs??[])if(!runMap.has(run.job_kind))runMap.set(run.job_kind,run);

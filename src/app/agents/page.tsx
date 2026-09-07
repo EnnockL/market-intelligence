@@ -14,8 +14,8 @@ export default async function AgentsPage() {
     db.from("market_regime_snapshots").select("*").lte("available_at", now).order("created_at", { ascending: false }).limit(2),
     db.from("meta_assessments").select("*,assets(symbol),meta_assessment_requirements(*)").lte("available_at", now).order("created_at", { ascending: false }).limit(12),
     db.from("ai_explanations").select("*,assets(symbol)").lte("available_at", now).order("created_at", { ascending: false }).limit(20),
-    db.from("scheduled_jobs").select("*").order("priority", { ascending: true }),
-    db.from("scheduled_job_runs").select("*").order("started_at", { ascending: false }).limit(100),
+    db.from("scheduled_jobs").select("id,job_key,job_type,enabled,status,locked_at,last_successful_run_at,last_heartbeat_at,next_run_at,consecutive_failures").order("priority", { ascending: true }),
+    db.from("scheduled_job_runs").select("job_id,status,records_processed,started_at").order("started_at", { ascending: false }).limit(100),
   ]);
   const latestRuns = new Map<string, any>();
   for (const run of runs ?? []) if (!latestRuns.has(run.job_id)) latestRuns.set(run.job_id, run);

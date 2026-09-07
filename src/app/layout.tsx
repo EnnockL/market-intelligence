@@ -17,8 +17,8 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <SidebarNav />
       <div className="sidebar-bottom">
         <Link href="/agents" className="system-status"><i /><span><strong>Agent status</strong><small>Open operational view</small></span></Link>
-        <div className="sidebar-controls"><ThemeToggle /><button className="command-button" aria-label="Open command palette">⌘ K</button></div>
-        <button className="sidebar-profile" aria-label="Open profile"><span className="profile-button">EN</span><span><strong>Research account</strong><small>Local workspace</small></span><b>•••</b></button>
+        <div className="sidebar-controls"><ThemeToggle /></div>
+        <Link href="/operator" className="sidebar-profile" aria-label="Operatörsinloggning och kontoåtkomst"><span className="profile-button">EN</span><span><strong>Operatörsåtkomst</strong><small>Logga in / hantera session</small></span><b>→</b></Link>
       </div>
     </aside>
     <MobileNavigation />

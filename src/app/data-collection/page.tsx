@@ -3,9 +3,13 @@ import {
   ageLabel,
   classifyOperationsStatus,
   SAFE_MANUAL_JOB_TYPES,
+  pipelineReadStatus as pipelineStatus,
+  processedRecordCount as metricRecords,
   type OperationsStatus,
 } from "@/domain/data-operations";
 import { ManualRunForm } from "./manual-run-form";
+import { readCount, readQuery } from "@/data/query-result";
+import { isOperatorAuthConfigured } from "@/lib/operator-session";
 import styles from "./data-collection.module.css";
 
 export const dynamic = "force-dynamic";
@@ -40,43 +44,39 @@ const providerDefinitions = [
   {
     name: "Finnhub",
     matcher: /finnhub/i,
-    fallbackJobs: ["STOCK_INGESTION", "CANDLE_INGESTION", "NEWS_INGESTION"],
     freshness: 900,
   },
   {
     name: "Helius",
     matcher: /helius|solana-rpc/i,
-    fallbackJobs: ["WALLET_INGESTION", "WALLET_DISCOVERY"],
     freshness: 900,
   },
   {
     name: "Birdeye",
     matcher: /birdeye/i,
-    fallbackJobs: ["DATA_GAP_CLOSURE"],
     freshness: 1800,
   },
   {
     name: "DexScreener",
     matcher: /dexscreener/i,
-    fallbackJobs: ["CRYPTO_MARKET", "POOL_DISCOVERY"],
     freshness: 600,
   },
   {
     name: "GeckoTerminal",
     matcher: /gecko/i,
-    fallbackJobs: ["CRYPTO_MARKET", "POOL_DISCOVERY"],
     freshness: 600,
   },
 ] as const;
 
 export default async function DataCollectionPage() {
   const db = createServiceClient();
-  const since = new Date(Date.now() - 86_400_000).toISOString();
+  const until = new Date().toISOString();
+  const since = new Date(Date.parse(until) - 86_400_000).toISOString();
   const [
     jobsResult,
     runsResult,
     jobRunsResult,
-    errorsResult,
+    windowResult,
     prices,
     candles,
     transactions,
@@ -86,78 +86,65 @@ export default async function DataCollectionPage() {
     discoveryCandidates,
     promotionEvaluations,
   ] = await Promise.all([
-    db.from("scheduled_jobs").select("*").order("priority"),
-    db
+    readQuery(db.from("scheduled_jobs").select("id,job_key,job_type,status,enabled,interval_seconds,next_run_at,last_successful_run_at,last_heartbeat_at,consecutive_failures,last_error,metrics").order("priority")),
+    readQuery(db
       .from("ingestion_runs")
       .select(
         "id,job_kind,provider,status,records_processed,started_at,finished_at,error_message",
       )
       .order("started_at", { ascending: false })
-      .limit(300),
-    db
+      .limit(300)),
+    readQuery(db
       .from("scheduled_job_runs")
       .select("id,job_id,status,started_at,finished_at,records_processed,error")
       .order("started_at", { ascending: false })
-      .limit(120),
-    db
-      .from("provider_errors")
-      .select(
-        "id,provider,error_code,message,retryable,http_status,occurred_at",
-      )
-      .order("occurred_at", { ascending: false })
-      .limit(80),
-    db
+      .limit(120)),
+    readQuery(db.rpc("data_operations_window_summary", { p_since: since, p_until: until })),
+    readCount(db
       .from("market_prices")
       .select("*", { count: "exact", head: true })
-      .gte("captured_at", since),
-    db
+      .gte("captured_at", since).lt("captured_at", until)),
+    readCount(db
       .from("market_candles")
       .select("*", { count: "exact", head: true })
-      .gte("created_at", since),
-    db
+      .gte("created_at", since).lt("created_at", until)),
+    readCount(db
       .from("wallet_transactions")
       .select("*", { count: "exact", head: true })
-      .gte("ingested_at", since),
-    db
+      .gte("ingested_at", since).lt("ingested_at", until)),
+    readCount(db
       .from("crypto_tokens")
       .select("*", { count: "exact", head: true })
-      .gte("first_seen_at", since),
-    db
+      .gte("first_seen_at", since).lt("first_seen_at", until)),
+    readCount(db
       .from("wallets")
       .select("*", { count: "exact", head: true })
-      .gte("created_at", since),
-    db
+      .gte("created_at", since).lt("created_at", until)),
+    readCount(db
       .from("pool_discovery_observations")
       .select("*", { count: "exact", head: true })
-      .gte("created_at", since),
-    db.from("wallet_discovery_candidates").select("status", { count: "exact" }),
-    db
+      .gte("created_at", since).lt("created_at", until)),
+    readQuery(db.rpc("wallet_promotion_read_counts")),
+    readQuery(db
       .from("wallet_promotion_evaluations")
       .select("decided_state,blockers,available_at")
       .order("available_at", { ascending: false })
-      .limit(500),
+      .limit(500)),
   ]);
   const jobs = (jobsResult.data ?? []) as Job[];
   const runs = (runsResult.data ?? []) as Run[];
   const providers = providerDefinitions.map((definition) =>
-    providerHealth(definition, runs, jobs),
+    providerHealth(definition, runs),
   );
   const safeJobs = jobs.filter((job) =>
     SAFE_MANUAL_JOB_TYPES.has(job.job_type),
   );
   const enabledJobs = jobs.filter((job) => job.enabled);
   const healthyJobs = enabledJobs.filter(
-    (job) => job.status === "HEALTHY",
+    (job) => pipelineStatus(job, new Date(until)) === "LIVE",
   ).length;
-  const candidateRows = discoveryCandidates.data ?? [];
-  const promotionCounts = Object.fromEntries(
-    ["candidate", "tracked", "reviewing", "verified", "rejected"].map(
-      (state) => [
-        state,
-        candidateRows.filter((row: any) => row.status === state).length,
-      ],
-    ),
-  );
+  const promotionCounts = discoveryCandidates.data;
+  const windowCounts = windowResult.data;
   const blockerCounts = new Map<string, number>();
   for (const evaluation of promotionEvaluations.data ?? [])
     for (const blocker of Array.isArray(evaluation.blockers)
@@ -181,21 +168,23 @@ export default async function DataCollectionPage() {
           </p>
         </div>
         <div className={styles.heroStatus}>
-          <span>PIPELINES ONLINE</span>
+          <span>PIPELINES WITH RECENT SUCCESS</span>
           <strong>
-            {healthyJobs}/{enabledJobs.length}
+            {jobsResult.status === "error" ? "—" : `${healthyJobs}/${enabledJobs.length}`}
           </strong>
-          <p>Execution is outside this control plane.</p>
+          <p>Job freshness is not proof of usable data or trading readiness.</p>
         </div>
       </section>
       <section className={styles.summary}>
-        <Stat label="Prices · 24h" value={prices.count ?? 0} />
-        <Stat label="Candles · 24h" value={candles.count ?? 0} />
-        <Stat label="Wallet tx · 24h" value={transactions.count ?? 0} />
-        <Stat label="Tokens · 24h" value={tokens.count ?? 0} />
-        <Stat label="New tracked · 24h" value={wallets.count ?? 0} />
-        <Stat label="Pools · 24h" value={pools.count ?? 0} />
+        <Stat label="Quote timestamps · 24h" value={prices.data} />
+        <Stat label="Imported candles · 24h" value={candles.data} />
+        <Stat label="Imported wallet tx · 24h" value={transactions.data} />
+        <Stat label="New tokens · 24h" value={tokens.data} />
+        <Stat label="New wallets · 24h" value={wallets.data} />
+        <Stat label="Imported pools · 24h" value={pools.data} />
       </section>
+      <p className={styles.readNotice}>Tidsfönster: {formatDate(since)}–{formatDate(until)} Stockholm. Noll betyder en lyckad läsning utan poster; — betyder att värdet inte kunde laddas. Gamla prisstämplar kan bero på stängd marknad.</p>
+      {[prices, candles, transactions, tokens, wallets, pools].some(result => result.status === "error") && <ReadError text="En eller flera dataräknare kunde inte laddas. Fungerande räknare visas fortfarande." />}
       <section className={styles.panel}>
         <PanelHeader
           eyebrow="WALLET INTELLIGENCE"
@@ -205,24 +194,24 @@ export default async function DataCollectionPage() {
         <div className={styles.promotionGrid}>
           <PromotionStat
             label="Discovered candidates"
-            value={candidateRows.length}
+            value={promotionCounts?.total ?? null}
           />
-          <PromotionStat label="Tracked" value={promotionCounts.tracked} />
-          <PromotionStat label="Reviewing" value={promotionCounts.reviewing} />
-          <PromotionStat label="Verified" value={promotionCounts.verified} />
-          <PromotionStat label="Rejected" value={promotionCounts.rejected} />
+          <PromotionStat label="Tracked" value={promotionCounts?.tracked ?? null} />
+          <PromotionStat label="Reviewing" value={promotionCounts?.reviewing ?? null} />
+          <PromotionStat label="Verified" value={promotionCounts?.verified ?? null} />
+          <PromotionStat label="Rejected" value={promotionCounts?.rejected ?? null} />
         </div>
         <div className={styles.promotionDetail}>
           <div>
             <span>CURRENTLY BLOCKED</span>
-            <strong>{promotionCounts.candidate}</strong>
+            <strong>{promotionCounts?.candidate ?? "—"}</strong>
             <p>
               Candidates remain untracked until every discovery requirement
               passes.
             </p>
           </div>
           <div>
-            <span>TOP PROMOTION BLOCKERS</span>
+            <span>TOP BLOCKERS · LATEST 500 EVALUATIONS</span>
             {topPromotionBlockers.length ? (
               topPromotionBlockers.map(([blocker, count]) => (
                 <p key={blocker}>
@@ -230,17 +219,19 @@ export default async function DataCollectionPage() {
                 </p>
               ))
             ) : (
-              <p>No immutable promotion evaluations yet.</p>
+              <p>{promotionEvaluations.status === "error" ? "Bedömningarna kunde inte laddas." : "No immutable promotion evaluations yet."}</p>
             )}
           </div>
         </div>
+        {discoveryCandidates.status === "error" && <ReadError text="Walletsammanfattningen kunde inte laddas. Kontrollera att läsmodellens migration är applicerad." />}
       </section>
       <section className={styles.panel}>
         <PanelHeader
           eyebrow="PROVIDER NETWORK"
           title="Live data sources"
-          meta="observed from persisted runs"
+          meta="provider-specific observations; no inferred connection status"
         />
+        {runsResult.status === "error" && <ReadError text="Providerhistoriken kunde inte laddas. Inga anslutningar antas vara friska." />}
         <div className={styles.providerGrid}>
           {providers.map((provider) => (
             <article className={styles.provider} key={provider.name}>
@@ -256,10 +247,10 @@ export default async function DataCollectionPage() {
               </p>
               <footer>
                 <span>
-                  {provider.records.toLocaleString("sv-SE")} latest records
+                  {provider.records?.toLocaleString("sv-SE") ?? "—"} latest processed records
                 </span>
                 <span>
-                  {provider.latestError ?? "No current provider error"}
+                  {provider.latestError ?? "No error in loaded provider history"}
                 </span>
               </footer>
             </article>
@@ -274,57 +265,44 @@ export default async function DataCollectionPage() {
             meta="operator protected"
           />
           <ManualRunForm
-            jobs={safeJobs}
-            enabled={Boolean(process.env.DATA_OPERATIONS_OPERATOR_TOKEN)}
+            jobs={safeJobs.map(({ job_key, job_type }) => ({ job_key, job_type }))}
+            enabled={isOperatorAuthConfigured()}
           />
         </section>
         <section className={styles.panel}>
           <PanelHeader
             eyebrow="COVERAGE"
             title="Provider diagnostics"
-            meta="last 24 hours"
+            meta="exact aggregate · last 24 hours"
           />
           <div className={styles.coverageList}>
             <Coverage
-              label="Provider observations"
-              value={runs
-                .filter((run) => run.started_at >= since)
-                .reduce((sum, run) => sum + run.records_processed, 0)}
+              label="Processed records (not unique observations)"
+              value={windowCounts?.records_processed ?? null}
             />
             <Coverage
               label="Successful ingestion runs"
-              value={
-                runs.filter(
-                  (run) =>
-                    run.started_at >= since && run.status === "succeeded",
-                ).length
-              }
+              value={windowCounts?.succeeded ?? null}
             />
             <Coverage
               label="Failed ingestion runs"
-              value={
-                runs.filter(
-                  (run) => run.started_at >= since && run.status === "failed",
-                ).length
-              }
+              value={windowCounts?.failed ?? null}
             />
             <Coverage
               label="Provider errors"
-              value={
-                (errorsResult.data ?? []).filter(
-                  (error: any) => error.occurred_at >= since,
-                ).length
-              }
+              value={windowCounts?.provider_errors ?? null}
             />
           </div>
+          {windowResult.status === "error" && <ReadError text="Dygnsaggregatet kunde inte laddas. En begränsad historiklista används inte som ersättning." />}
         </section>
       </section>
       <section className={styles.panel}>
         <PanelHeader
           eyebrow="SCHEDULER"
           title="Pipeline status"
-          meta={`${jobs.length} registered jobs`}
+          meta={jobsResult.status === "error" ? "Läsfel" : `${jobs.length} registered jobs`}
         />
+        {jobsResult.status === "error" && <ReadError text="Schemaläggningen kunde inte laddas." />}
         <div className={styles.jobTable}>
           <div className={styles.tableHead}>
             <span>Pipeline</span>
@@ -341,7 +319,7 @@ export default async function DataCollectionPage() {
               </div>
               <Status
                 status={
-                  job.enabled ? schedulerStatus(job.status) : "UNAVAILABLE"
+                  pipelineStatus(job, new Date(until))
                 }
               />
               <div>
@@ -353,13 +331,13 @@ export default async function DataCollectionPage() {
                 </small>
               </div>
               <strong>
-                {metricRecords(job.metrics).toLocaleString("sv-SE")}
+                {metricRecords(job.metrics)?.toLocaleString("sv-SE") ?? "—"}
               </strong>
               <div>
                 <strong>{job.consecutive_failures} failures</strong>
                 <small>
                   {job.last_error
-                    ? truncate(job.last_error, 84)
+                    ? "Worker error recorded; inspect protected server logs."
                     : `Next ${formatDate(job.next_run_at)}`}
                 </small>
               </div>
@@ -371,8 +349,9 @@ export default async function DataCollectionPage() {
         <PanelHeader
           eyebrow="RUN HISTORY"
           title="Latest scheduler activity"
-          meta={`${jobRunsResult.data?.length ?? 0} loaded`}
+          meta={jobRunsResult.status === "error" ? "Läsfel" : `${jobRunsResult.data?.length ?? 0} loaded`}
         />
+        {jobRunsResult.status === "error" && <ReadError text="Körningshistoriken kunde inte laddas." />}
         <div className={styles.history}>
           {(jobRunsResult.data ?? []).slice(0, 20).map((run: any) => {
             const job = jobs.find((item) => item.id === run.job_id);
@@ -386,7 +365,7 @@ export default async function DataCollectionPage() {
                 <strong>{run.records_processed} records</strong>
                 <p>
                   {run.error
-                    ? truncate(run.error, 110)
+                    ? "Run failed; inspect protected server logs."
                     : run.finished_at
                       ? `Finished ${formatDate(run.finished_at)}`
                       : "In progress"}
@@ -403,7 +382,6 @@ export default async function DataCollectionPage() {
 function providerHealth(
   definition: (typeof providerDefinitions)[number],
   runs: Run[],
-  jobs: Job[],
 ) {
   const matchingRuns = runs.filter((run) =>
     definition.matcher.test(run.provider),
@@ -412,40 +390,25 @@ function providerHealth(
     (run) => run.status === "succeeded" && run.finished_at,
   );
   const latest = matchingRuns[0];
-  const fallbackJob = jobs.find((job) =>
-    definition.fallbackJobs.some((jobType) => jobType === job.job_type),
-  );
   const lastSuccessAt =
-    successful?.finished_at ?? fallbackJob?.last_successful_run_at ?? null;
+    successful?.finished_at ?? null;
   return {
     name: definition.name,
     lastSuccessAt,
     records:
-      successful?.records_processed ?? metricRecords(fallbackJob?.metrics),
+      successful?.records_processed ?? null,
     latestError:
       latest?.status === "failed"
-        ? latest.error_message
-        : (fallbackJob?.last_error ?? null),
+        ? "Provider error recorded; inspect protected server logs."
+        : null,
     status: classifyOperationsStatus({
       lastSuccessAt,
-      latestStatus: latest?.status ?? fallbackJob?.status,
+      latestStatus: latest?.status,
       freshnessSeconds: definition.freshness,
     }),
   };
 }
 
-function metricRecords(metrics?: Record<string, unknown>) {
-  const value =
-    metrics?.records ?? metrics?.processed ?? metrics?.recordsProcessed ?? 0;
-  return typeof value === "number" ? value : Number(value) || 0;
-}
-function schedulerStatus(status: string): OperationsStatus {
-  return status === "HEALTHY"
-    ? "LIVE"
-    : status === "DEGRADED" || status === "FAILED"
-      ? "DEGRADED"
-      : "UNAVAILABLE";
-}
 function Status({ status }: { status: OperationsStatus }) {
   return (
     <span className={styles.status} data-status={status}>
@@ -453,27 +416,27 @@ function Status({ status }: { status: OperationsStatus }) {
     </span>
   );
 }
-function Stat({ label, value }: { label: string; value: number }) {
+function Stat({ label, value }: { label: string; value: number | null }) {
   return (
     <article>
       <span>{label}</span>
-      <strong>{value.toLocaleString("sv-SE")}</strong>
+      <strong>{value?.toLocaleString("sv-SE") ?? "—"}</strong>
     </article>
   );
 }
-function PromotionStat({ label, value }: { label: string; value: number }) {
+function PromotionStat({ label, value }: { label: string; value: number | null }) {
   return (
     <article>
       <span>{label}</span>
-      <strong>{value.toLocaleString("sv-SE")}</strong>
+      <strong>{value?.toLocaleString("sv-SE") ?? "—"}</strong>
     </article>
   );
 }
-function Coverage({ label, value }: { label: string; value: number }) {
+function Coverage({ label, value }: { label: string; value: number | null }) {
   return (
     <div>
       <span>{label}</span>
-      <strong>{value.toLocaleString("sv-SE")}</strong>
+      <strong>{value?.toLocaleString("sv-SE") ?? "—"}</strong>
     </div>
   );
 }
@@ -512,6 +475,6 @@ function humanize(value: string) {
     .replaceAll("_", " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
-function truncate(value: string, length: number) {
-  return value.length > length ? `${value.slice(0, length)}…` : value;
+function ReadError({ text }: { text: string }) {
+  return <p role="alert" className={styles.readError}>{text}</p>;
 }

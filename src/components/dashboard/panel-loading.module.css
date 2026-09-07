@@ -1,0 +1,17 @@
+.panel { min-width: 0; margin-bottom: 24px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface, #101412); padding: 24px; overflow-wrap: anywhere; }
+.panel h2 { margin: 8px 0 12px; font-size: 22px; }
+.panel p, .status { color: var(--muted); font-size: 13px; line-height: 1.6; }
+.rows { display: grid; gap: 18px; margin-top: 24px; }
+.row { height: 38px; border-radius: 6px; background: var(--line); opacity: .45; }
+.row:last-child { width: 65%; }
+.status { min-height: 28px; margin-top: 20px; }
+.status strong { color: var(--muted); font: 12px ui-monospace, monospace; }
+.status p { margin: 4px 0 0; }
+.link { color: var(--green); font-size: 13px; white-space: normal; }
+.error { border-color: var(--amber); }
+.region { min-width: 0; min-block-size: 350px; display: flow-root; margin-bottom: 24px; }
+.region > .panel, .region > :global(.radar-panel) { min-block-size: 350px; margin-bottom: 0; }
+.region > :global(.intelligence-grid) { min-block-size: 350px; }
+.retry { min-height: 44px; max-width: 100%; padding: 12px 18px; border: 1px solid var(--green); border-radius: 8px; background: var(--green); color: #07120e; font: inherit; cursor: pointer; }
+.retry:focus-visible { outline: 2px solid var(--text); outline-offset: 4px; }
+@media (max-width: 600px) { .panel { padding: 18px; margin-bottom: 18px; } }

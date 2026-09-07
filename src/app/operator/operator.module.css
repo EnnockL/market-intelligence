@@ -1,0 +1,14 @@
+.page { margin-left: var(--sidebar-width, 248px); padding: 48px 28px; min-height: 100vh; }
+.panel { max-width: 640px; margin: 0 auto; padding: 32px; border: 1px solid var(--line, #323a35); border-radius: 18px; background: var(--surface, #101211); color: var(--text, #f7f8f7); overflow-wrap: anywhere; }
+.panel h1 { margin: 12px 0 18px; }
+.panel p { line-height: 1.6; }
+.panel a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+.form { display: grid; gap: 12px; margin: 24px 0; }
+.form input { min-width: 0; padding: 12px; border: 1px solid var(--border, #bbc4d2); border-radius: 8px; background: var(--surface, #fff); color: inherit; font: inherit; }
+.form button { justify-self: start; padding: 12px 24px; border: 0; border-radius: 8px; background: #1f5bd7; color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+.form button:disabled { opacity: .5; cursor: not-allowed; }
+.form input:focus-visible, .form button:focus-visible { outline: 3px solid #659aff; outline-offset: 3px; }
+.form p { margin: 0; min-height: 24px; }
+.notice { padding: 14px; border: 1px solid #b17a16; border-radius: 8px; }
+.note { font-size: 14px; }
+@media (max-width: 900px) { .page { margin-left: 0; padding: 88px 16px 32px; } .panel { padding: 24px; } }

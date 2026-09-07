@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getPaperPortfolioData } from "@/data/paper-portfolio-data";
+import { PanelUnavailable } from "@/components/dashboard/panel-loading";
 export const dynamic = "force-dynamic";
 export default async function PaperPage() {
   const data = await getPaperPortfolioData();
@@ -13,11 +14,12 @@ export default async function PaperPage() {
           <span className="eyebrow">RESEARCH ENGINE</span>
           <h1>Paper Portfolio</h1>
           <p>
-            Deterministic policies with fees, delay, slippage and liquidity
-            constraints.
+            Observerat simulationstillstånd med avgifter, fördröjning och
+            likviditetsregler. Inte ett verifierat live-kontosaldo.
           </p>
         </div>
       </header>
+      {data.mode === "degraded" ? <PanelUnavailable title="Paper Portfolio" /> : !data.portfolios.length ? <div className="discovery-empty"><strong>Inga sparade paper-portföljer ännu.</strong><span>Inga resultat eller saldon kan visas innan en portfölj har skapats.</span></div> : null}
       {data.portfolios.map((p) => (
         <section className="radar-panel paper-portfolio" id={p.id} key={p.id}>
           <div className="panel-title">

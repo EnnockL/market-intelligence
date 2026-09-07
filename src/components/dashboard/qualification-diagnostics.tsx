@@ -23,11 +23,18 @@ export function QualificationDiagnostics({
         </div>
         <span className={s.policy}>{data.policyVersion}</span>
       </header>
+      <p className={s.meta} role={data.summaryStatus === "error" ? "alert" : undefined}>
+        {data.summaryStatus === "error"
+          ? "Sammanfattningen kunde inte laddas. Okända antal visas som —, inte som noll."
+          : data.summaryStatus === "empty"
+            ? "Ingen sparad sammanfattning ännu."
+            : `Sammanfattning per ${new Date(data.cutoff!).toLocaleString("sv-SE", { timeZone: "Europe/Stockholm" })} Stockholm · ${data.mode.toUpperCase()}`}
+      </p>
       <div className={s.funnel}>
         {stages.map((stage) => (
           <div className={s.stage} key={stage}>
             <span>{stage.replaceAll("_", " ")}</span>
-            <strong>{Number((data.funnel as any)[stage] ?? 0)}</strong>
+            <strong>{data.funnel?.[stage] ?? "—"}</strong>
           </div>
         ))}
       </div>
@@ -62,19 +69,20 @@ export function QualificationDiagnostics({
             ))
           ) : (
             <div className={s.empty}>
-              Run the qualification worker to create the first immutable
-              diagnostics.
+              {data.candidatesStatus === "error"
+                ? "Kandidatlistan kunde inte laddas. Den sparade sammanfattningen ovan påverkas inte. Försök ladda om sidan."
+                : "Inga sparade kandidatbedömningar ännu."}
             </div>
           )}
         </div>
         <aside className={s.stats}>
           <h3>Top blockers</h3>
           <Distribution
-            values={data.blockerFrequency as Record<string, number>}
+            values={data.blockerFrequency}
           />
           <h3>Unknown coverage gaps</h3>
           <Distribution
-            values={data.unknownFrequency as Record<string, number>}
+            values={data.unknownFrequency}
             unknown
           />
         </aside>
@@ -86,9 +94,10 @@ function Distribution({
   values,
   unknown = false,
 }: {
-  values: Record<string, number>;
+  values: Record<string, number> | null;
   unknown?: boolean;
 }) {
+  if (values === null) return <p className={s.meta}>Sammanställning ej tillgänglig</p>;
   const entries = Object.entries(values)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5),

@@ -1,17 +1,19 @@
 import Link from "next/link";
-import type { getPaperPortfolioData } from "@/data/paper-portfolio-data";
+import type { getPaperPortfolioSummaryData } from "@/data/paper-portfolio-data";
+import { PanelUnavailable } from "./panel-loading";
 export function PaperPortfolioPanel({
   data,
 }: {
-  data: Awaited<ReturnType<typeof getPaperPortfolioData>>;
+  data: Awaited<ReturnType<typeof getPaperPortfolioSummaryData>>;
 }) {
+  if (data.mode === "degraded") return <PanelUnavailable title="Paper Portfolios" />;
   return (
     <section className="radar-panel paper-panel">
       <div className="panel-title">
         <div>
           <span className="eyebrow">DETERMINISTIC RESEARCH</span>
           <h2>Paper Portfolios</h2>
-          <p>Same candidate stream, isolated policies, no real execution.</p>
+          <p>Observerat papersaldo med simulerade pengar. Inte ett verifierat live-kontosaldo.</p>
         </div>
         <Link href="/paper" className="paper-view">
           Open lab →

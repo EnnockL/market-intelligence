@@ -1,5 +1,5 @@
 "use client";
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
@@ -19,6 +19,37 @@ function isActiveRoute(pathname: string, href: string) {
   return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
 }
 
+export function restoreSidebarGroups(saved: string | null, pathname: string): OpenGroups {
+  const restored = { ...defaultOpenGroups };
+  try {
+    const parsed: unknown = saved ? JSON.parse(saved) : null;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      for (const group of groups) {
+        const value = (parsed as Record<string, unknown>)[group.label];
+        if (typeof value === "boolean") restored[group.label] = value;
+      }
+    }
+  } catch {
+    // Malformed storage must not remove navigation or turn strings into booleans.
+  }
+  const activeGroup = groups.find((group) => group.items.some(([href]) => isActiveRoute(pathname, href)));
+  if (activeGroup) restored[activeGroup.label] = true;
+  return restored;
+}
+
+/** Must be rendered below Link: Next owns completion, cancellation and prefetch. */
+export function SidebarLinkContent({ icon, label }: { icon: string; label: string }) {
+  const { pending } = useLinkStatus();
+  return <>
+    <span className="nav-icon" aria-hidden="true">{icon}</span>
+    <span className="sidebar-link-label">{label}</span>
+    <span className="sidebar-link-status" role="status" aria-live="polite" aria-atomic="true">
+      <span className="sidebar-link-progress" data-pending={pending} aria-hidden="true" />
+      <span className="sidebar-sr-only">{pending ? `Loading ${label}` : ""}</span>
+    </span>
+  </>;
+}
+
 export function SidebarNav() {
   const pathname = usePathname();
   const [openGroups, setOpenGroups] = useState<OpenGroups>(defaultOpenGroups);
@@ -26,12 +57,7 @@ export function SidebarNav() {
   useEffect(() => {
     try {
       const saved = window.localStorage.getItem(storageKey);
-      if (saved) {
-        const restored = { ...defaultOpenGroups, ...JSON.parse(saved) } as OpenGroups;
-        const activeGroup = groups.find((group) => group.items.some(([href]) => isActiveRoute(pathname, href)));
-        if (activeGroup) restored[activeGroup.label] = true;
-        setOpenGroups(restored);
-      }
+      setOpenGroups(restoreSidebarGroups(saved, pathname));
     } catch {
       // The navigation remains fully open if browser storage is unavailable.
     }
@@ -72,7 +98,7 @@ export function SidebarNav() {
       <div className="sidebar-nav-items" data-open={open} id={controlsId}>
         {group.items.map(([href, icon, label]) => {
           const active = isActiveRoute(pathname, href);
-          return <Link aria-current={active ? "page" : undefined} className={active ? "active" : undefined} href={href} key={href}><span className="nav-icon">{icon}</span><span>{label}</span></Link>;
+          return <Link aria-label={label} title={label} aria-current={active ? "page" : undefined} className={active ? "active" : undefined} href={href} key={href}><SidebarLinkContent icon={icon} label={label} /></Link>;
         })}
       </div>
     </div>;

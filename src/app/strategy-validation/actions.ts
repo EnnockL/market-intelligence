@@ -5,6 +5,7 @@ import { z } from "zod";
 import { createServiceClient } from "@/lib/supabase/server";
 import { StrategyValidationService } from "@/services/strategy-validation/service";
 import type { ValidationPhase } from "@/domain/strategy-validation";
+import { requireOperatorPage } from "@/lib/operator-session";
 
 export type ValidationActionState = { status: "IDLE" | "SUCCESS" | "ERROR"; message: string };
 const initialError = (error: unknown): ValidationActionState => ({ status: "ERROR", message: error instanceof Error ? readable(error.message) : "Åtgärden misslyckades." });
@@ -16,6 +17,7 @@ const hypothesisSchema = z.object({
 });
 
 export async function registerHypothesis(_: ValidationActionState, formData: FormData): Promise<ValidationActionState> {
+  await requireOperatorPage("/strategy-validation");
   const parsed = hypothesisSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { status: "ERROR", message: "Fyll i strategi, version, tes, mekanism och en tydlig invalidering." };
   try {
@@ -33,6 +35,7 @@ const validationSchema = z.object({
 });
 
 export async function runValidation(_: ValidationActionState, formData: FormData): Promise<ValidationActionState> {
+  await requireOperatorPage("/strategy-validation");
   const parsed = validationSchema.safeParse({ ...Object.fromEntries(formData), evaluationRunIds: formData.getAll("evaluationRunIds") });
   if (!parsed.success) return { status: "ERROR", message: "Kontrollera backtest, hypotes, fas och kostnadsantaganden." };
   const db = createServiceClient();
@@ -61,7 +64,7 @@ function readable(message: string) {
     VALIDATION_WINDOW_OVERLAP: "Det nya testfönstret överlappar den föregående fasen. Välj endast senare data.",
   };
   if (labels[message]) return labels[message];
-  if (message.startsWith("PREVIOUS_VALIDATION_PHASE_REQUIRED:")) return `Fasen före måste köras först: ${message.split(":")[1]}.`;
-  if (message.startsWith("PREVIOUS_VALIDATION_PHASE_NOT_APPROVED:")) return `Fasen före är inte godkänd: ${message.split(":")[1]}.`;
-  return message;
+  if (message.startsWith("PREVIOUS_VALIDATION_PHASE_REQUIRED:")) return "Fasen före måste köras först.";
+  if (message.startsWith("PREVIOUS_VALIDATION_PHASE_NOT_APPROVED:")) return "Fasen före är inte godkänd.";
+  return "Valideringen kunde inte slutföras. Kontrollera underlaget och serverns driftlogg.";
 }

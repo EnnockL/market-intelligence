@@ -9,6 +9,7 @@ export function dataModeAt(
   if (!observedAt) return "unavailable";
   const timestamp = Date.parse(observedAt);
   if (!Number.isFinite(timestamp)) return "unavailable";
+  if (timestamp > now) return "unavailable";
   return now - timestamp <= LIVE_WINDOW_MS ? "live" : "stale";
 }
 

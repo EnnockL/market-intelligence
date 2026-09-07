@@ -8,10 +8,13 @@ import { HistoricalCandleService } from "@/services/candles/service";
 import { FinnhubCandleProvider } from "@/services/candles/finnhub-candle-provider";
 import { GeckoTerminalCandleProvider } from "@/services/candles/geckoterminal-candle-provider";
 import type { StrategyDefinition } from "@/domain/strategy-pattern-lab";
+import { requireOperatorPage } from "@/lib/operator-session";
 
 export type LabActionState = {
-  status: "IDLE" | "SUCCESS" | "ERROR";
+  status: "IDLE" | "SUCCESS" | "WARNING" | "ERROR";
   message: string;
+  runId?: string;
+  reused?: boolean;
   values?: {
     definitionId?: string;
     assetId?: string;
@@ -22,6 +25,7 @@ export type LabActionState = {
 const runSchema = z.object({ definitionId: z.string().uuid(), assetId: z.string().uuid(), startsAt: z.string().date(), endsAt: z.string().date() });
 
 export async function runBacktest(_: LabActionState, formData: FormData): Promise<LabActionState> {
+  await requireOperatorPage("/strategy-lab");
   const values = {
     definitionId: String(formData.get("definitionId") ?? ""),
     assetId: String(formData.get("assetId") ?? ""),
@@ -41,11 +45,12 @@ export async function runBacktest(_: LabActionState, formData: FormData): Promis
     if (!candleCheck.count) return { status: "ERROR", message: `${assetResult.data.symbol} saknar ${definitionResult.data.timeframe}-candles i den valda perioden. Välj en konfigurerad asset eller importera dess candle-källa först.`, values };
     const result = await new StrategyPatternLabService(db).run(definitionResult.data.definition as StrategyDefinition, assetResult.data.id, endsAt, startsAt);
     revalidatePath("/strategy-lab");
-    return { status: "SUCCESS", message: `${assetResult.data.symbol}: ${result.evaluation.candleCount} candles, ${result.evaluation.setupCount} setups och ${result.evaluation.tradeCount} trades.`, values };
-  } catch (error) { return { status: "ERROR", message: error instanceof Error ? error.message : "Backtest kunde inte köras.", values }; }
+    return { status: result.evaluation.tradeCount ? "SUCCESS" : "WARNING", message: `${assetResult.data.symbol}: ${result.evaluation.candleCount} candles, ${result.evaluation.setupCount} setups och ${result.evaluation.tradeCount} trades.${result.reused ? " Samma sparade körning återanvändes." : ""}${result.evaluation.tradeCount ? "" : " Körningen är klar, men inga trades uppfyllde reglerna. Det är inget lönsamhetsresultat."}`, values, runId: result.runId, reused: result.reused };
+  } catch { return { status: "ERROR", message: "Backtest kunde inte köras. Kontrollera datakällan och serverns driftlogg.", values }; }
 }
 
 export async function syncCandleSource(_: LabActionState, formData: FormData): Promise<LabActionState> {
+  await requireOperatorPage("/strategy-lab");
   const sourceId = z.string().uuid().safeParse(formData.get("sourceId"));
   if (!sourceId.success) return { status: "ERROR", message: "Ogiltig candle source." };
   const db = createServiceClient(), sourceResult = await db.from("candle_sources").select("*").eq("id", sourceId.data).eq("enabled", true).single();
@@ -58,7 +63,7 @@ export async function syncCandleSource(_: LabActionState, formData: FormData): P
     revalidatePath("/strategy-lab");
     return { status: "SUCCESS", message: `${result.fetched} candles hämtades, ${result.inserted} nya sparades.` };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Importen misslyckades.";
+    const message = "Importen misslyckades. Kontrollera datakällan och serverns driftlogg.";
     await db.from("candle_sources").update({ status: "DEGRADED", last_error: message, consecutive_failures: Number(source.consecutive_failures ?? 0) + 1, updated_at: now }).eq("id", source.id);
     revalidatePath("/strategy-lab"); return { status: "ERROR", message };
   }
