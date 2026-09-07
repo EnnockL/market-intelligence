@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useActionState, useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { runBacktest, syncCandleSource, type LabActionState } from "./actions";
 import { initialLabValues, isLabRunId, labWorkspaceUrl, requestedLabRun, resolveLabResult, type LabFormValues, type LabResultRead } from "./lab-workspace-state";
@@ -22,6 +22,7 @@ export interface BacktestWorkspaceProps {
 
 export function BacktestWorkspace({ definitions, assets, sources, runs, initialValues, requestedRunId, result }: BacktestWorkspaceProps) {
   const router = useRouter();
+  const detailId = useId();
   const [values, setValues] = useState(initialValues);
   const [selectedRunId, setSelectedRunId] = useState(requestedRunId);
   const [attemptFailed, setAttemptFailed] = useState(false);
@@ -76,6 +77,12 @@ export function BacktestWorkspace({ definitions, assets, sources, runs, initialV
   }
   const displayed = resolveLabResult(selectedRunId, requestedRunId, result, runPending, attemptFailed);
   const canRun = definitions.some(item => item.id === values.definitionId) && assets.some(item => item.id === values.assetId);
+  const selectedDefinition = definitions.find(item => item.id === values.definitionId);
+  const selectedAsset = assets.find(item => item.id === values.assetId);
+  const selectedSource = sources.find(item => item.id === values.sourceId);
+  const selectedRunLabel = runs.find(run => run.id === selectedRunId)?.label ?? (selectedRunId
+    ? `${result.run?.id === selectedRunId ? `${result.run.symbol} · ${result.run.strategyName}` : "Vald körning"} · ${selectedRunId}`
+    : "Välj ett sparat resultat");
 
   return <>
     <section className={panel.panel}>
@@ -84,14 +91,14 @@ export function BacktestWorkspace({ definitions, assets, sources, runs, initialV
         <form action={runAction} className={styles.controlCard} aria-busy={runPending}>
           <div className={styles.cardHeader}><small>BACKTEST</small><h3>Run historical evaluation</h3><p>Testa en låst regelversion mot point-in-time marknadsdata. Datum och val behålls efter körningen.</p></div>
           <div className={styles.fieldGrid}>
-            <label>Strategy<select name="definitionId" value={values.definitionId} onChange={event => edit("definitionId", event.target.value)} disabled={busy} required>
+            <div><label>Strategy<select name="definitionId" value={values.definitionId} aria-describedby={`${detailId}-strategy`} onChange={event => edit("definitionId", event.target.value)} disabled={busy} required>
               {!definitions.some(item => item.id === values.definitionId) && <option value={values.definitionId}>{values.definitionId ? "Vald strategi är inte tillgänglig" : "Välj strategi"}</option>}
               {definitions.map(item => <option key={item.id} value={item.id}>{item.name} · {item.timeframe}</option>)}
-            </select></label>
-            <label>Asset<select name="assetId" value={values.assetId} onChange={event => edit("assetId", event.target.value)} disabled={busy} required>
+            </select></label><p id={`${detailId}-strategy`} className={styles.selectionDetail}>{selectedDefinition ? `${selectedDefinition.name} · ${selectedDefinition.timeframe}` : values.definitionId ? "Vald strategi är inte tillgänglig" : "Välj strategi"}</p></div>
+            <div><label>Asset<select name="assetId" value={values.assetId} aria-describedby={`${detailId}-asset`} onChange={event => edit("assetId", event.target.value)} disabled={busy} required>
               {!assets.some(item => item.id === values.assetId) && <option value={values.assetId}>{values.assetId ? "Vald asset är inte tillgänglig" : "Välj asset"}</option>}
               {assets.map(item => <option key={item.id} value={item.id}>{item.symbol} · {item.kind}</option>)}
-            </select></label>
+            </select></label><p id={`${detailId}-asset`} className={styles.selectionDetail}>{selectedAsset ? `${selectedAsset.symbol} · ${selectedAsset.kind}` : values.assetId ? "Vald asset är inte tillgänglig" : "Välj asset"}</p></div>
           </div>
           <div className={styles.dateRow}>
             <label>From<input name="startsAt" type="date" value={values.startsAt} onChange={event => edit("startsAt", event.target.value)} disabled={busy} required/></label>
@@ -104,10 +111,10 @@ export function BacktestWorkspace({ definitions, assets, sources, runs, initialV
         </form>
         <form action={syncAction} className={styles.controlCard} aria-busy={syncPending}>
           <div className={styles.cardHeader}><small>DATA IMPORT</small><h3>Sync historical candles</h3><p>Import och backtest är olika åtgärder. En import byter inte det valda resultatet.</p></div>
-          <label>Configured source<select name="sourceId" value={values.sourceId} onChange={event => edit("sourceId", event.target.value)} disabled={busy} required>
+          <div><label>Configured source<select name="sourceId" value={values.sourceId} aria-describedby={`${detailId}-source`} onChange={event => edit("sourceId", event.target.value)} disabled={busy} required>
             {!sources.some(item => item.id === values.sourceId) && <option value={values.sourceId}>{values.sourceId ? "Vald källa är inte tillgänglig" : "Välj källa"}</option>}
             {sources.map(item => <option key={item.id} value={item.id}>{item.label} · {item.status}</option>)}
-          </select></label>
+          </select></label><p id={`${detailId}-source`} className={styles.selectionDetail}>{selectedSource ? `${selectedSource.label} · ${selectedSource.status}` : values.sourceId ? "Vald källa är inte tillgänglig" : "Välj källa"}</p></div>
           <div className={styles.infoBox}><span>BOUNDED INGESTION</span><p>Max tre providersidor per körning. Importen sparar sin cursor och kan återupptas säkert.</p></div>
           <button className={styles.secondaryAction} disabled={busy || !sources.some(item => item.id === values.sourceId)}>{syncPending ? "Importerar…" : "Import next candle batch"}</button>
           <ActionMessage state={syncState}/>
@@ -117,11 +124,12 @@ export function BacktestWorkspace({ definitions, assets, sources, runs, initialV
     <section className={panel.panel} id="lab-result" aria-busy={displayed.status === "running" || displayed.status === "loading"}>
       <header><div><p>SELECTED IMMUTABLE RESULT</p><h2>Resultat för vald körning</h2></div><span>Kapital och diagram nedan tillhör samma körnings-ID.</span></header>
       <div className={styles.resultPicker}>
-        <label>Sparade körningar<select value={selectedRunId ?? ""} onChange={event => selectResult(event.target.value || null)} disabled={busy}>
+        <label>Sparade körningar<select value={selectedRunId ?? ""} aria-describedby={`${detailId}-run`} onChange={event => selectResult(event.target.value || null)} disabled={busy}>
           <option value="">Välj ett sparat resultat</option>
-          {selectedRunId && !runs.some(run => run.id === selectedRunId) && <option value={selectedRunId}>{result.run?.id === selectedRunId ? `${result.run.symbol} · ${result.run.strategyName}` : "Vald körning"} · {selectedRunId}</option>}
+          {selectedRunId && !runs.some(run => run.id === selectedRunId) && <option value={selectedRunId}>{selectedRunLabel}</option>}
           {runs.map(run => <option value={run.id} key={run.id}>{run.label}</option>)}
         </select></label>
+        <p id={`${detailId}-run`} className={styles.selectionDetail}>{selectedRunLabel}{displayed.status === "unavailable" ? " · Resultatet är inte tillgängligt." : ""}</p>
         <p>Att ändra formuläret räknar inte om ett sparat resultat. Kör backtest för att testa de nya valen.</p>
       </div>
       <LabResultPanels result={displayed}/>

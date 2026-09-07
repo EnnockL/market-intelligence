@@ -3,6 +3,7 @@
   margin: 0 auto;
   padding: 24px 38px 80px;
   color: #f2f4f3;
+  overflow-wrap: anywhere;
 }
 .hero,
 .panel,
@@ -34,7 +35,7 @@
 }
 .summary {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   margin-bottom: 24px;
   overflow: hidden;
 }
@@ -91,7 +92,7 @@
 }
 .metrics {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
 }
 .metrics strong {
@@ -130,7 +131,7 @@
     flex-direction: column;
   }
   .metrics {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 @media (max-width: 600px) {
@@ -140,9 +141,9 @@
   .summary, .panel { border-radius: 18px; }
   .summary > div { padding: 17px 20px; }
   .panel header { padding: 20px; }
-  .grid, .workspaceGrid, .visualGrid { padding: 14px; }
-  .grid article, .controlCard, .chart, .tradeLedger { padding: 18px; }
-  .metrics { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .grid { padding: 14px; }
+  .grid article { padding: 18px; }
+  .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .empty { padding: 28px 18px; }
 }
 .panel {
@@ -186,6 +187,7 @@
 }
 .ranking div {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 18px;
   padding: 12px 0;
@@ -292,6 +294,8 @@
 .chart > div {
   display: flex;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 .chart small,
 .chart footer {
@@ -318,8 +322,8 @@
   overflow: auto;
 }
 .tradeLedger div {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 16px;
   padding: 12px 0;
   border-bottom: 1px solid #242826;
@@ -363,6 +367,9 @@
   .capitalResult > div:nth-child(-n+2) { border-bottom: 1px solid #252a28; }
 }
 @media (max-width: 600px) {
+  .visualGrid { padding: 14px; }
+  .chart, .tradeLedger { padding: 18px; }
+  .ranking div { flex-direction: column; gap: 8px; }
   .capitalProjection { padding: 14px; }
   .capitalControls { flex-direction: column; }
   .capitalControls input, .capitalControls select { width: 100%; min-width: 0; }
