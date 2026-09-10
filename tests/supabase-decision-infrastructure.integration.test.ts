@@ -17,6 +17,7 @@ suite("Supabase decision infrastructure", () => {
   const evidenceId = `integration-evidence-${run}`;
   const futureEvidenceId = `integration-future-${run}`;
   const opportunityId = crypto.randomUUID();
+  let walletIds: string[];
 
   beforeAll(async () => {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -26,6 +27,12 @@ suite("Supabase decision infrastructure", () => {
     const { data, error } = await db.from("assets").select("id").limit(1).single();
     if (error) throw error;
     assetId = data.id;
+    const { data: wallets, error: walletError } = await db.from("wallets").insert([
+      { chain: "integration-test", address: `wallet-a-${run}` },
+      { chain: "integration-test", address: `wallet-b-${run}` },
+    ]).select("id");
+    if (walletError) throw walletError;
+    walletIds = wallets.map((wallet) => wallet.id);
   });
 
   it("has migrations 0013 and 0014 operational", async () => {
@@ -127,9 +134,6 @@ suite("Supabase decision infrastructure", () => {
   });
 
   it("keeps wallet cluster history immutable and point-in-time", async () => {
-    const { data: wallets, error: walletError } = await db.from("wallets").select("id").order("created_at").limit(2);
-    expect(walletError).toBeNull();
-    if (!wallets || wallets.length < 2) throw new Error("Two wallets are required for clustering integration");
     const earlyCutoff = "2026-01-01T00:00:00.000Z", laterCutoff = "2026-01-02T00:00:00.000Z";
     const base = { scope_hash: `integration-${run}`, model_version: "wallet-independence-v1", raw_wallet_count: 2,
       relationship_pair_count: 1, observed_at: earlyCutoff, available_at: earlyCutoff, data_quality: 90, evidence: { run } };
@@ -151,15 +155,12 @@ suite("Supabase decision infrastructure", () => {
   });
 
   it("persists wallet clustering idempotently", async () => {
-    const { data: wallets, error } = await db.from("wallets").select("id").order("created_at").limit(2);
-    expect(error).toBeNull();
-    if (!wallets || wallets.length < 2) throw new Error("Two wallets are required for clustering integration");
     const base = { dataQuality: 90, historyComplete: true, firstFundingAt: "2026-02-01T00:00:00.000Z",
       funderAddress: "integration-shared-exchange", fundingSourceClassification: "exchange" as const,
       counterparties: [], tradeTimesByAsset: {} };
     const evaluation = evaluateWalletIndependence([
-      { ...base, walletId: wallets[0].id, firstSeenAt: "2025-01-01T00:00:00.000Z" },
-      { ...base, walletId: wallets[1].id, firstSeenAt: "2025-02-01T00:00:00.000Z" },
+      { ...base, walletId: walletIds[0], firstSeenAt: "2025-01-01T00:00:00.000Z" },
+      { ...base, walletId: walletIds[1], firstSeenAt: "2025-02-01T00:00:00.000Z" },
     ]);
     const repository = new WalletClusteringRepository(db);
     const cutoff = new Date(Date.now() - 1_000).toISOString();

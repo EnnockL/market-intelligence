@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { randomUUID } from "node:crypto";
 import {
   BASELINE_COHORT_POLICY,
   BASELINE_FEATURE_VERSION,
@@ -6,6 +7,7 @@ import {
   buildHistoricalBaseline,
   calculateForwardReturn,
   targetTime,
+  type BaselineAssetClass,
   type BaselineFeature,
   type HistoricalExample,
 } from "@/domain/baseline-forecast";
@@ -15,23 +17,10 @@ import {
   horizonMs,
   type ForecastHorizon,
 } from "@/domain/forecast";
-import { PostgresOutboxTransport } from "@/services/events/postgres-outbox-transport";
-type Observation = {
-  id: string;
-  asset_id: string;
-  observed_at: string;
-  ingested_at: string;
-  price_usd: number | null;
-  volume_24h_usd: number | null;
-  liquidity_usd: number | null;
-  market_cap_usd: number | null;
-  confidence: number;
-};
+import { BASELINE_INPUT_POLICY, loadBaselineObservations, type BaselineObservation } from "./observations";
+import { BASELINE_TARGET_POLICY, loadBaselineTargets } from "./targets";
 export class BaselineForecastService {
-  private transport;
-  constructor(private db: SupabaseClient) {
-    this.transport = new PostgresOutboxTransport(db);
-  }
+  constructor(private db: SupabaseClient) { }
   async run(now = new Date().toISOString()) {
     const runKey = deterministicDigest({
       version: BASELINE_FORECAST_VERSION,
@@ -66,42 +55,48 @@ export class BaselineForecastService {
       if (created.error) throw created.error;
       run = created.data;
     }
+    let evaluated = 0, available = 0;
     try {
-      const { data: targets, error: tError } = await this.db
-        .from("baseline_forecast_pending_targets")
-        .select("*")
-        .lte("information_cutoff_at", now)
-        .order("information_cutoff_at")
-        .limit(250);
-      if (tError) throw tError;
+      const targets = await loadBaselineTargets(this.db, now);
       const observationCache = new Map<
         string,
-        Map<string, Observation[]>
+        BaselineObservation[]
       >();
       const exampleCache = new Map<string, HistoricalExample[]>();
-      let evaluated = 0,
-        available = 0;
+      const failures: string[] = [];
       for (const target of targets ?? []) {
-        const cutoff = target.information_cutoff_at as string;
-        let byAsset = observationCache.get(cutoff);
-        if (!byAsset) {
-          byAsset = await this.loadObservations(cutoff);
-          observationCache.set(cutoff, byAsset);
+        try {
+          const cutoff = new Date(target.information_cutoff_at).toISOString();
+          const assetClass: BaselineAssetClass | null = target.asset_kind === "stock" ? "STOCK" : target.asset_kind === "crypto" ? "CRYPTO" : null;
+          const observationKey = `${target.asset_id}:${assetClass}:${cutoff}`;
+          let observations = observationCache.get(observationKey);
+          if (!observations) {
+            observations = assetClass ? await loadBaselineObservations(this.db, target.asset_id, assetClass, cutoff) : [];
+            observationCache.set(observationKey, observations);
+          }
+          const exampleKey = `${observationKey}:${target.horizon}`;
+          let examples = exampleCache.get(exampleKey);
+          if (!examples) {
+            examples = historicalExamples(
+              observations,
+              target.horizon as ForecastHorizon,
+              cutoff,
+            );
+            exampleCache.set(exampleKey, examples);
+          }
+          const result = await this.evaluate(target, assetClass, observations, examples);
+          evaluated++;
+          if (result.status === "AVAILABLE") available++;
+        } catch (cause) {
+          // One damaged target must not starve the rest of either lane. Failed
+          // targets stay pending; the run remains visibly FAILED, not green.
+          const detail = cause as { code?: unknown; message?: unknown } | null;
+          const code = typeof detail?.message === "string" && /^BASELINE_[A-Z_]+$/.test(detail.message)
+            ? detail.message : typeof detail?.code === "string" && /^[A-Z0-9]{5}$/.test(detail.code) ? detail.code : "UNAVAILABLE";
+          failures.push(`${target.id}:${code}`);
         }
-        const exampleKey = `${cutoff}:${target.horizon}`;
-        let examples = exampleCache.get(exampleKey);
-        if (!examples) {
-          examples = historicalExamples(
-            byAsset,
-            target.horizon as ForecastHorizon,
-            cutoff,
-          );
-          exampleCache.set(exampleKey, examples);
-        }
-        const result = await this.evaluate(target, byAsset, examples);
-        evaluated++;
-        if (result.status === "AVAILABLE") available++;
       }
+      if (failures.length) throw new Error(`BASELINE_TARGET_FAILURE: ${failures.length} of ${targets.length}; source IDs: ${failures.join(",")}`);
       const saved = await this.db
         .from("baseline_forecast_runs")
         .update({
@@ -119,180 +114,180 @@ export class BaselineForecastService {
         .from("baseline_forecast_runs")
         .update({
           status: "FAILED",
+          forecasts_evaluated: evaluated,
+          forecasts_available: available,
           last_error: cause instanceof Error ? cause.message : String(cause),
         })
         .eq("id", run.id);
       throw cause;
     }
   }
-  private async loadObservations(cutoff: string) {
-    const { data: rows, error } = await this.db
-      .from("crypto_market_observations")
-      .select(
-        "id,asset_id,observed_at,ingested_at,price_usd,volume_24h_usd,liquidity_usd,market_cap_usd,confidence",
-      )
-      .lte("observed_at", cutoff)
-      .lte("ingested_at", cutoff)
-      .order("observed_at")
-      .limit(10000);
-    if (error) throw error;
-    return group((rows ?? []).map(mapObservation));
-  }
   private async evaluate(
     target: any,
-    byAsset: Map<string, Observation[]>,
+    assetClass: BaselineAssetClass | null,
+    targetRows: BaselineObservation[],
     examples: HistoricalExample[],
   ) {
     const horizon = target.horizon as ForecastHorizon,
-      cutoff = target.information_cutoff_at,
-      targetRows = byAsset.get(target.asset_id) ?? [],
-      current = lastAt(targetRows, cutoff),
-      targetFeature = featureAt(targetRows, current);
+      cutoff = new Date(target.information_cutoff_at).toISOString(),
+      last = targetRows.at(-1) ?? null,
+      stale = !!last && Date.parse(cutoff) - Date.parse(last.observedAt) > BASELINE_INPUT_POLICY.maxTargetAgeMs,
+      current = stale ? null : last,
+      targetFeature = featureAt(targetRows, current, assetClass ?? "CRYPTO");
     const result = buildHistoricalBaseline(
-        targetFeature,
-        examples,
-        horizon,
-        cutoff,
-      ),
-      key = forecastKey({
-        assetId: target.asset_id,
-        catalystId: target.catalyst_id,
-        horizon,
-        cutoff,
-        version: BASELINE_FORECAST_VERSION,
+      targetFeature,
+      examples,
+      horizon,
+      cutoff,
+    ),
+      key = deterministicDigest({
+        sourceForecastId: target.id, forecastKey: forecastKey({
+          assetId: target.asset_id,
+          catalystId: target.catalyst_id,
+          horizon,
+          cutoff,
+          version: BASELINE_FORECAST_VERSION,
+        })
       });
-    const existing = await this.db
-      .from("forecasts")
-      .select("id,status")
-      .eq("forecast_key", key)
-      .maybeSingle();
-    if (existing.error) throw existing.error;
-    if (existing.data) return { status: existing.data.status, reused: true };
+    if (!assetClass) result.reason = "UNSUPPORTED_ASSET_CLASS";
+    else if (stale) result.reason = "TARGET_OBSERVATION_STALE";
     const evidence = current ? [current.id] : [];
-    const inserted = await this.db
-      .from("forecasts")
-      .insert({
-        forecast_key: key,
-        asset_id: target.asset_id,
-        opportunity_id: target.opportunity_id,
-        candidate_id: target.candidate_id,
-        catalyst_id: target.catalyst_id,
-        forecast_version: BASELINE_FORECAST_VERSION,
-        forecast_method:
-          result.status === "AVAILABLE"
-            ? "HISTORICAL_BASELINE"
-            : "INSUFFICIENT_DATA",
-        model_version: BASELINE_FORECAST_VERSION,
-        feature_set_version: BASELINE_FEATURE_VERSION,
-        training_cutoff_at: cutoff,
-        information_cutoff_at: cutoff,
-        available_at: new Date().toISOString(),
-        horizon,
+    const forecastId = randomUUID();
+    const emittedAt = new Date().toISOString();
+    const forecast = {
+      id: forecastId,
+      forecast_key: key,
+      asset_id: target.asset_id,
+      opportunity_id: target.opportunity_id,
+      candidate_id: target.candidate_id,
+      catalyst_id: target.catalyst_id,
+      forecast_version: BASELINE_FORECAST_VERSION,
+      forecast_method:
+        result.status === "AVAILABLE"
+          ? "HISTORICAL_BASELINE"
+          : "INSUFFICIENT_DATA",
+      model_version: BASELINE_FORECAST_VERSION,
+      feature_set_version: BASELINE_FEATURE_VERSION,
+      training_cutoff_at: cutoff,
+      information_cutoff_at: cutoff,
+      available_at: emittedAt,
+      horizon,
+      status: result.status,
+      reason: result.reason,
+      expected_return: result.expectedReturn,
+      lower_bound: result.lowerBound,
+      upper_bound: result.upperBound,
+      probability_positive: result.probabilityPositive,
+      probability_2x: result.probability2x,
+      probability_5x: result.probability5x,
+      probability_10x: result.probability10x,
+      confidence:
+        result.status === "AVAILABLE"
+          ? Math.min(
+            100,
+            Math.round(
+              (result.sampleSize /
+                BASELINE_COHORT_POLICY.minimumSampleSize) *
+              70,
+            ),
+          )
+          : null,
+      data_quality: result.dataQuality,
+      evidence_refs: evidence,
+      agent_inputs: {
+        cohortPolicy: BASELINE_COHORT_POLICY.version,
+        sampleSize: result.sampleSize,
+        modelHash: result.modelHash,
+        sourceForecastId: target.id,
+        assetClass,
+        observationSource: assetClass === "STOCK" ? "market_candles" : assetClass === "CRYPTO" ? "crypto_market_observations" : null,
+        volumeBasis: assetClass === "STOCK" ? "COMPLETED_5M_BAR" : "ROLLING_24H_SNAPSHOT",
+        inputPolicy: BASELINE_INPUT_POLICY,
+        targetPolicy: BASELINE_TARGET_POLICY,
+        inputRowCount: targetRows.length,
+        inputStartsAt: targetRows[0]?.observedAt ?? null,
+        inputEndsAt: targetRows.at(-1)?.observedAt ?? null,
+        inputHash: deterministicDigest(targetRows),
+      },
+      market_regime: null,
+    };
+    const snapshotKey = deterministicDigest({
+      forecastId,
+      feature: targetFeature,
+      version: BASELINE_FEATURE_VERSION,
+    });
+    const snapshot = {
+      snapshot_key: snapshotKey,
+      forecast_id: forecastId,
+      asset_id: target.asset_id,
+      feature_version: BASELINE_FEATURE_VERSION,
+      information_cutoff_at: cutoff,
+      available_at: emittedAt,
+      price_momentum_5m: targetFeature.priceMomentum5m,
+      volume_multiple_5m: targetFeature.volumeMultiple5m,
+      liquidity_usd: targetFeature.liquidityUsd,
+      market_cap_usd: targetFeature.marketCapUsd,
+      data_quality: targetFeature.dataQuality,
+      feature_payload: targetFeature,
+      feature_hash: deterministicDigest(targetFeature),
+    };
+    const exampleMap = new Map(examples.map((x) => [x.sourceId, x]));
+    const cohort = result.members.map((member) => {
+      const x = exampleMap.get(member.sourceId)!;
+      return {
+        forecast_id: forecastId,
+        source_observation_id: assetClass === "CRYPTO" ? x.sourceId : null,
+        source_candle_id: assetClass === "STOCK" ? x.sourceId : null,
+        anchor_at: x.anchorAt,
+        outcome_at: x.outcomeAt,
+        return_pct: x.returnPct,
+        feature_distance: 0,
+        available_at: x.availableAt,
+        member_hash: deterministicDigest({
+          forecastId,
+          sourceId: x.sourceId,
+        }),
+      };
+    });
+    const event = createEventEnvelope({
+      eventType: "forecast.baseline_created",
+      entityType: "forecast",
+      entityId: forecastId,
+      assetId: target.asset_id,
+      occurredAt: emittedAt,
+      observedAt: emittedAt,
+      availableAt: emittedAt,
+      provider: "baseline-forecast",
+      sourceReference: `baseline:${key}`,
+      dataQuality: result.dataQuality ?? 0,
+      confidence: null,
+      payload: {
         status: result.status,
         reason: result.reason,
-        expected_return: result.expectedReturn,
-        lower_bound: result.lowerBound,
-        upper_bound: result.upperBound,
-        probability_positive: result.probabilityPositive,
-        probability_2x: result.probability2x,
-        probability_5x: result.probability5x,
-        probability_10x: result.probability10x,
-        confidence:
-          result.status === "AVAILABLE"
-            ? Math.min(
-                100,
-                Math.round(
-                  (result.sampleSize /
-                    BASELINE_COHORT_POLICY.minimumSampleSize) *
-                    70,
-                ),
-              )
-            : null,
-        data_quality: result.dataQuality,
-        evidence_refs: evidence,
-        agent_inputs: {
-          cohortPolicy: BASELINE_COHORT_POLICY.version,
-          sampleSize: result.sampleSize,
-          modelHash: result.modelHash,
-          sourceForecastId: target.id,
-        },
-        market_regime: null,
-      })
-      .select("id")
-      .single();
-    if (inserted.error) throw inserted.error;
-    const forecastId = inserted.data.id,
-      snapshotKey = deterministicDigest({
-        forecastId,
-        feature: targetFeature,
-        version: BASELINE_FEATURE_VERSION,
-      });
-    const snapshot = await this.db
-      .from("baseline_feature_snapshots")
-      .insert({
-        snapshot_key: snapshotKey,
-        forecast_id: forecastId,
-        asset_id: target.asset_id,
-        feature_version: BASELINE_FEATURE_VERSION,
-        information_cutoff_at: cutoff,
-        available_at: new Date().toISOString(),
-        price_momentum_5m: targetFeature.priceMomentum5m,
-        volume_multiple_5m: targetFeature.volumeMultiple5m,
-        liquidity_usd: targetFeature.liquidityUsd,
-        market_cap_usd: targetFeature.marketCapUsd,
-        data_quality: targetFeature.dataQuality,
-        feature_payload: targetFeature,
-        feature_hash: deterministicDigest(targetFeature),
-      });
-    if (snapshot.error) throw snapshot.error;
-    if (result.members.length) {
-      const exampleMap = new Map(examples.map((x) => [x.sourceId, x]));
-      const cohort = await this.db.from("baseline_cohort_members").insert(
-        result.members.map((member) => {
-          const x = exampleMap.get(member.sourceId)!;
-          return {
-            forecast_id: forecastId,
-            source_observation_id: x.sourceId,
-            anchor_at: x.anchorAt,
-            outcome_at: x.outcomeAt,
-            return_pct: x.returnPct,
-            feature_distance: 0,
-            available_at: x.availableAt,
-            member_hash: deterministicDigest({
-              forecastId,
-              sourceId: x.sourceId,
-            }),
-          };
-        }),
-      );
-      if (cohort.error) throw cohort.error;
-    }
-    const emittedAt = new Date().toISOString();
-    await this.transport.publish(
-      createEventEnvelope({
-        eventType: "forecast.baseline_created",
-        entityType: "forecast",
-        entityId: forecastId,
-        assetId: target.asset_id,
-        occurredAt: emittedAt,
-        observedAt: emittedAt,
-        availableAt: emittedAt,
-        provider: "baseline-forecast",
-        sourceReference: `baseline:${key}`,
-        dataQuality: result.dataQuality ?? 0,
-        confidence: null,
-        payload: {
-          status: result.status,
-          reason: result.reason,
-          horizon,
-          sampleSize: result.sampleSize,
-          modelVersion: BASELINE_FORECAST_VERSION,
-        },
-        correlationId: target.catalyst_id,
-        causationId: null,
-      }),
-    );
-    return result;
+        horizon,
+        sampleSize: result.sampleSize,
+        modelVersion: BASELINE_FORECAST_VERSION,
+      },
+      correlationId: target.catalyst_id,
+      causationId: null,
+    });
+    const { data, error } = await this.db.rpc("persist_baseline_forecast_bundle_v2", {
+      p_forecast: forecast, p_snapshot: snapshot, p_members: cohort,
+      p_event: {
+        event_id: event.eventId, schema_version: event.schemaVersion, event_type: event.eventType,
+        entity_type: event.entityType, entity_id: event.entityId, asset_id: event.assetId,
+        occurred_at: event.occurredAt, observed_at: event.observedAt, available_at: event.availableAt,
+        provider: event.provider, source_reference: event.sourceReference, data_quality: event.dataQuality,
+        confidence: event.confidence, payload: event.payload, payload_hash: event.payloadHash,
+        correlation_id: event.correlationId, causation_id: event.causationId,
+      },
+      // Identity excludes generated IDs and write timestamps, but includes all
+      // information used to compute the immutable result on a retry.
+      p_bundle_hash: deterministicDigest({ key, inputs: forecast.agent_inputs, feature: targetFeature, result }),
+    });
+    if (error) throw error;
+    if (!data || !["AVAILABLE", "INSUFFICIENT_DATA"].includes(data.status)) throw new Error("BASELINE_BUNDLE_NOT_CONFIRMED");
+    return { status: data.status, reused: data.reused === true };
   }
 }
 export function baselineRunSlot(now: string) {
@@ -300,99 +295,59 @@ export function baselineRunSlot(now: string) {
   if (!Number.isFinite(time)) throw new Error("Invalid baseline run time");
   return new Date(Math.floor(time / 300_000) * 300_000).toISOString();
 }
-function mapObservation(x: any): Observation {
-  return {
-    ...x,
-    price_usd: num(x.price_usd),
-    volume_24h_usd: num(x.volume_24h_usd),
-    liquidity_usd: num(x.liquidity_usd),
-    market_cap_usd: num(x.market_cap_usd),
-    confidence: Number(x.confidence),
-  };
-}
-function num(x: unknown) {
-  const n = Number(x);
-  return x === null || x === undefined || !Number.isFinite(n) ? null : n;
-}
-function group(rows: Observation[]) {
-  const out = new Map<string, Observation[]>();
-  for (const row of rows) {
-    const list = out.get(row.asset_id) ?? [];
-    list.push(row);
-    out.set(row.asset_id, list);
+function firstAtOrAfter(rows: BaselineObservation[], at: string) {
+  let low = 0, high = rows.length;
+  while (low < high) {
+    const mid = (low + high) >>> 1;
+    if (rows[mid].observedAt < at) low = mid + 1;
+    else high = mid;
   }
-  return out;
+  return low;
 }
-function lastAt(rows: Observation[], at: string) {
-  return [...rows].reverse().find((x) => x.observed_at <= at) ?? null;
+
+function priorFor(rows: BaselineObservation[], current: BaselineObservation) {
+  const desired = new Date(Date.parse(current.observedAt) - 300_000).toISOString();
+  let index = firstAtOrAfter(rows, desired);
+  if (rows[index]?.observedAt !== desired) index--;
+  const prior = rows[index];
+  // A previous trading day's close is not five-minute momentum. Late-known
+  // observations cannot enter the anchor's historical feature vector either.
+  return prior && Date.parse(desired) - Date.parse(prior.observedAt) <= BASELINE_INPUT_POLICY.priorToleranceMs
+    && prior.availableAt <= current.availableAt ? prior : null;
 }
-function featureAt(
-  rows: Observation[],
-  current: Observation | null,
-): BaselineFeature {
-  if (!current)
-    return {
-      priceMomentum5m: null,
-      volumeMultiple5m: null,
-      liquidityUsd: null,
-      marketCapUsd: null,
-      dataQuality: 0,
-    };
-  const prior = lastAt(
-      rows,
-      new Date(Date.parse(current.observed_at) - 300000).toISOString(),
-    ),
-    price =
-      prior?.price_usd && current.price_usd
-        ? (current.price_usd / prior.price_usd - 1) * 100
-        : null,
-    volume =
-      prior?.volume_24h_usd && current.volume_24h_usd
-        ? current.volume_24h_usd / prior.volume_24h_usd
-        : null;
+
+export function featureAt(rows: BaselineObservation[], current: BaselineObservation | null, assetClass: BaselineAssetClass): BaselineFeature {
+  if (!current) return { assetClass, priceMomentum5m: null, volumeMultiple5m: null, liquidityUsd: null, marketCapUsd: null, dataQuality: 0 };
+  const prior = priorFor(rows, current);
   return {
-    priceMomentum5m: price,
-    volumeMultiple5m: volume,
-    liquidityUsd: current.liquidity_usd,
-    marketCapUsd: current.market_cap_usd,
-    dataQuality: Math.min(
-      current.confidence,
-      prior?.confidence ?? current.confidence,
-    ),
+    assetClass,
+    priceMomentum5m: prior?.price && current.price ? (current.price / prior.price - 1) * 100 : null,
+    volumeMultiple5m: prior?.volume && current.volume !== null ? current.volume / prior.volume : null,
+    liquidityUsd: current.liquidityUsd,
+    marketCapUsd: current.marketCapUsd,
+    dataQuality: Math.min(current.dataQuality, prior?.dataQuality ?? current.dataQuality),
   };
 }
-function historicalExamples(
-  byAsset: Map<string, Observation[]>,
-  horizon: ForecastHorizon,
-  cutoff: string,
-) {
+
+export function historicalExamples(rows: BaselineObservation[], horizon: ForecastHorizon, cutoff: string) {
   const out: HistoricalExample[] = [];
-  for (const [assetId, rows] of byAsset)
-    for (const anchor of rows) {
-      if (!anchor.price_usd) continue;
-      const desired = targetTime(anchor.observed_at, horizon),
-        max = new Date(
-          Date.parse(desired) + Math.max(60000, horizonMs(horizon) * 0.1),
-        ).toISOString(),
-        exit = rows.find(
-          (x) =>
-            x.observed_at >= desired &&
-            x.observed_at <= max &&
-            x.price_usd &&
-            x.ingested_at <= cutoff,
-        );
-      if (!exit?.price_usd) continue;
-      const features = featureAt(rows, anchor),
-        availableAt = [anchor.ingested_at, exit.ingested_at].sort().at(-1)!;
-      out.push({
-        sourceId: anchor.id,
-        assetId,
-        anchorAt: anchor.observed_at,
-        outcomeAt: exit.observed_at,
-        availableAt,
-        features,
-        returnPct: calculateForwardReturn(anchor.price_usd, exit.price_usd),
-      });
-    }
+  for (const anchor of rows) {
+    if (!anchor.price || anchor.availableAt > cutoff) continue;
+    const desired = targetTime(anchor.observedAt, horizon);
+    const max = new Date(Date.parse(desired) + Math.max(60_000, horizonMs(horizon) * 0.1)).toISOString();
+    const exit = rows[firstAtOrAfter(rows, desired)];
+    if (!exit?.price || exit.observedAt > max || exit.observedAt > cutoff || exit.availableAt > cutoff) continue;
+    const prior = priorFor(rows, anchor);
+    const availableAt = [prior?.availableAt ?? anchor.availableAt, anchor.availableAt, exit.availableAt].sort().at(-1)!;
+    out.push({
+      sourceId: anchor.id,
+      assetId: anchor.assetId,
+      anchorAt: anchor.observedAt,
+      outcomeAt: exit.observedAt,
+      availableAt,
+      features: featureAt(rows, anchor, anchor.assetClass),
+      returnPct: calculateForwardReturn(anchor.price, exit.price),
+    });
+  }
   return out;
 }

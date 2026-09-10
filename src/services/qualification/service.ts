@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { deterministicDigest } from "@/domain/events";
 import { aggregateQualifications, evaluateQualification, QUALIFICATION_POLICY_V2, type EvidenceRef, type QualificationEvaluation, type RequirementKey } from "@/domain/qualification";
+import { riskCoveragePercent } from "@/domain/risk-coverage";
 
 export class QualificationDiagnosticsService {
   private static readonly MAX_REVISIONS_PER_RUN = 50;
@@ -111,4 +112,3 @@ export class QualificationDiagnosticsService {
 }
 function number(value: unknown) { const n = Number(value); return value === null || value === undefined || !Number.isFinite(n) ? null : n; }
 function elapsedMs(from: unknown, to: unknown) { const start = Date.parse(String(from)), end = Date.parse(String(to)); return Number.isFinite(start) && Number.isFinite(end) ? Math.max(0, end - start) : null; }
-function riskCoveragePercent(value: any) { const components = value?.components; if (!Array.isArray(components) || !components.length) return null; return Math.round(components.filter((c: any) => c.status && c.status !== "UNKNOWN").length / components.length * 100); }

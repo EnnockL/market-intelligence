@@ -3,10 +3,10 @@ import { StrategyIntelligenceService } from "@/services/strategy-intelligence/se
 
 export async function runStrategyIntelligence(db: SupabaseClient, cutoffAt = new Date().toISOString()) {
   const service = new StrategyIntelligenceService(db);
-  const runs = await db.from("strategy_evaluation_runs").select("id,asset_id,information_cutoff_at,strategy_definitions(timeframe)").lte("information_cutoff_at", cutoffAt).order("information_cutoff_at", { ascending: false }).limit(100);
+  const runs = await db.from("strategy_evaluation_runs").select("id,asset_id,information_cutoff_at,strategy_definitions(timeframe)").lte("information_cutoff_at", cutoffAt).lte("available_at", cutoffAt).lte("created_at", cutoffAt).order("information_cutoff_at", { ascending: false }).limit(100);
   if (runs.error) throw runs.error;
   const researched = [];
-  for (const run of runs.data ?? []) researched.push(await service.researchEvaluation(run.id, "VALIDATION"));
+  for (const run of runs.data ?? []) researched.push(await service.researchEvaluation(run.id, { cutoffAt }));
   const latest: any = runs.data?.[0];
   if (!latest) return { status: "INSUFFICIENT_DATA", reason: "NO_STRATEGY_EVALUATIONS", researched: 0 };
   const asset = await db.from("assets").select("id,symbol,kind").eq("id", latest.asset_id).single();

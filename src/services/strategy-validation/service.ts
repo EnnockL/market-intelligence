@@ -40,7 +40,8 @@ export class StrategyValidationService {
     const rows: any[] = orderedRuns.flatMap((run) => (run.strategy_evaluation_trades ?? []).map((trade: any) => ({ ...trade, asset_id: run.asset_id }))).sort((a, b) => a.entered_at.localeCompare(b.entered_at) || a.trade_key.localeCompare(b.trade_key));
     const informationCutoffAt = orderedRuns.map((run) => run.information_cutoff_at).sort().at(-1)!;
     const windowStart = rows.length ? rows[0].entered_at : informationCutoffAt;
-    const windowEnd = rows.length ? rows.at(-1)!.exited_at : informationCutoffAt;
+    // Entry order does not imply exit order when positions overlap.
+    const windowEnd = rows.length ? rows.map(row => row.exited_at).sort().at(-1)! : informationCutoffAt;
     if (input.phase !== "LEARNING" && hypothesis.data.registered_at > windowStart) throw new Error("HYPOTHESIS_NOT_FROZEN_BEFORE_EVALUATION_WINDOW");
     await this.assertPhaseProgression(definition.id, input.hypothesisId, input.phase, windowStart);
     const qualityValues = await Promise.all(orderedRuns.map((run) => this.loadCandleDataQuality(run.asset_id, definition.timeframe, windowStart, windowEnd, run.information_cutoff_at)));

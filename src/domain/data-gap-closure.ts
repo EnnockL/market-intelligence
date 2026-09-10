@@ -1,6 +1,6 @@
 import { deterministicDigest } from "@/domain/events";
 
-export const DATA_GAP_CLOSURE_VERSION = "candidate-data-gap-closure-v2";
+export const DATA_GAP_CLOSURE_VERSION = "candidate-data-gap-closure-v3";
 export type GapStatus = "CLOSED" | "PARTIAL" | "UNKNOWN" | "UNAVAILABLE" | "FAILED";
 export interface GapEvidence { id: string; type: string; availableAt: string; source: string; dataQuality: number | null }
 export interface GapClosureInput {
@@ -18,7 +18,7 @@ export function buildGapClosure(input: GapClosureInput) {
   const qualities = evidence.map(x=>x.dataQuality).filter((x):x is number=>x!==null);
   if (qualities.length) features.dataQuality = Math.round(qualities.reduce((a,b)=>a+b,0)/qualities.length);
   const gaps = {
-    safety: input.risk ? "CLOSED" : "UNKNOWN", liquidity: input.liquidity ? "CLOSED" : "UNKNOWN",
+    safety: input.risk ? ["LOW_RISK", "ELEVATED", "HIGH_RISK", "CONFIRMED_RUG"].includes(input.risk.status) ? "CLOSED" : "PARTIAL" : "UNKNOWN", liquidity: input.liquidity ? "CLOSED" : "UNKNOWN",
     wallet_convergence: input.wallet.rawWalletCount === null ? "UNKNOWN" : "CLOSED",
     wallet_independence: input.wallet.confirmedIndependent === null ? "UNKNOWN" : "CLOSED",
     relationship_coverage: input.wallet.relationshipCoverage === null ? "UNKNOWN" : input.wallet.relationshipCoverage >= 80 ? "CLOSED" : "PARTIAL",

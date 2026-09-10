@@ -1,11 +1,21 @@
 import type { IngestionRepository } from "@/repositories/ingestion-repository";
-import {
-  unavailableHistorical,
-  type CryptoMarketDataProvider,
-} from "@/services/crypto-market/provider";
+import type { CryptoMarketDataProvider, CryptoMarketPoint } from "@/services/crypto-market/provider";
 import { ProviderError } from "@/services/market-data/provider";
 
 const WRAPPED_SOL = "So11111111111111111111111111111111111111112";
+
+type WalletPnlBatch = {
+  runId: string; considered: number; enriched: number; unavailable: number; recordsProcessed: number;
+  cycles: number; walletsProcessed: number; blockedWallets: Array<{ walletId: string; reason: string }>;
+  informationBlockers: string[]; errors: string[];
+};
+
+export class WalletPnlBatchError extends Error {
+  readonly code = "WALLET_PNL_BATCH_PARTIAL";
+  constructor(readonly result: WalletPnlBatch) {
+    super(`WALLET_PNL_BATCH_PARTIAL: ${result.errors.length}/${result.considered} transactions failed; ${result.recordsProcessed} enrichments saved; ${result.blockedWallets.length} wallets blocked; ${result.cycles} cycles rebuilt`);
+  }
+}
 
 export async function runWalletPnl(
   provider: CryptoMarketDataProvider,
@@ -17,22 +27,22 @@ export async function runWalletPnl(
   let unavailable = 0;
   const errors: string[] = [];
   try {
-    const transactions = await repository.walletTransactionsForEnrichment();
-    const existing = await repository.enrichedTransactionIds(provider.name);
-    const pending = selectFairEnrichmentBatch(
-      transactions.filter((transaction) => !existing.has(transaction.id)),
-      Math.max(1, Math.min(50, maxTransactions)),
-    );
+    const budget = Math.max(1, Math.min(50, maxTransactions));
+    // The database excludes completed records before limiting, and rotates
+    // both wallets and retryable transactions using persisted attempt times.
+    const pending = (await repository.walletTransactionsForEnrichment(provider.name, budget)).slice(0, budget);
     for (const transaction of pending) {
       try {
         const tokenPoint = await provider.getHistorical({
           mintAddress: transaction.mintAddress,
           timestamp: transaction.occurred_at,
         });
+        assertHistoricalPoint(tokenPoint, transaction.mintAddress, provider.name);
         const solPoint = await provider.getHistorical({
           mintAddress: WRAPPED_SOL,
           timestamp: transaction.occurred_at,
         });
+        assertHistoricalPoint(solPoint, WRAPPED_SOL, provider.name);
         const raw = transaction.raw_payload as { meta?: { fee?: number } } | null;
         await repository.saveTransactionEnrichment({
           transactionId: transaction.id,
@@ -43,57 +53,56 @@ export async function runWalletPnl(
           rawFeeLamports:
             typeof raw?.meta?.fee === "number" ? raw.meta.fee : null,
         });
-        enriched += 1;
+        // An explicit successful no-data response is evidence of a data gap,
+        // unlike an authorization, schema or transport failure. Keep its count
+        // separate without inventing a successful price or verification result.
+        if (tokenPoint.completeness === "unavailable" || solPoint.completeness === "unavailable") unavailable += 1;
+        else enriched += 1;
       } catch (error) {
         errors.push(`${transaction.id}:${errorText(error)}`);
         await repository.recordProviderError(runId, provider.name, error);
-        // A permanent provider response must not starve every later transaction.
-        // Persist explicit UNKNOWN evidence; retryable failures remain pending.
-        if (error instanceof ProviderError && !error.retryable) {
-          const unavailableReason = {
-            reason: "PERMANENT_PROVIDER_FAILURE",
-            providerCode: error.code,
-            providerStatus: error.status,
-          };
-          const raw = transaction.raw_payload as { meta?: { fee?: number } } | null;
-          await repository.saveTransactionEnrichment({
-            transactionId: transaction.id,
-            provider: provider.name,
-            tokenPoint: unavailableHistorical(
-              transaction.mintAddress,
-              transaction.occurred_at,
-              provider.name,
-              unavailableReason,
-            ),
-            solPoint: unavailableHistorical(
-              WRAPPED_SOL,
-              transaction.occurred_at,
-              provider.name,
-              unavailableReason,
-            ),
-            quantity: Number(transaction.quantity),
-            rawFeeLamports:
-              typeof raw?.meta?.fee === "number" ? raw.meta.fee : null,
-          });
-          unavailable += 1;
-        }
+        // retryable=false means the request should not immediately retry. It
+        // does NOT prove that this transaction's historical data is absent.
+        // Persist no enrichment on errors; the bounded DB queue rotates them.
       }
     }
-    const cycles = await repository.rebuildWalletPnl(provider.name);
-    await repository.finishRun(runId, enriched);
-    return {
+    const rebuild = await repository.rebuildWalletPnl(provider.name);
+    const result: WalletPnlBatch = {
       runId,
-      status: "succeeded" as const,
       considered: pending.length,
       enriched,
       unavailable,
-      cycles,
+      recordsProcessed: enriched + unavailable,
+      cycles: rebuild.cycles,
+      walletsProcessed: rebuild.walletsProcessed,
+      blockedWallets: rebuild.blocked,
+      informationBlockers: rebuild.informationBlockers,
       errors,
     };
+    if (errors.length || rebuild.blocked.length) throw new WalletPnlBatchError(result);
+    await repository.finishRun(runId, result.recordsProcessed);
+    return { ...result, status: "succeeded" as const };
   } catch (error) {
-    await repository.recordProviderError(runId, provider.name, error);
-    await repository.failRun(runId, error);
+    const context = error instanceof WalletPnlBatchError ? {
+      considered: error.result.considered, enriched: error.result.enriched, unavailable: error.result.unavailable,
+      recordsProcessed: error.result.recordsProcessed, failedTransactions: error.result.errors.length,
+      blockedWallets: error.result.blockedWallets.length, cycles: error.result.cycles,
+      walletsProcessed: error.result.walletsProcessed,
+    } : {};
+    try { await repository.recordProviderError(runId, provider.name, error, context); }
+    finally { await repository.failRun(runId, error, enriched + unavailable); }
     throw error;
+  }
+}
+
+function assertHistoricalPoint(point: CryptoMarketPoint, mint: string, provider: string) {
+  const hasPrice = point?.priceUsd !== null && Number.isFinite(point?.priceUsd) && point.priceUsd! > 0;
+  const explicitGap = point?.completeness === "unavailable" && point.priceUsd === null;
+  if (!point || point.chain !== "solana" || point.mintAddress !== mint || point.provider !== provider
+    || !Number.isFinite(Date.parse(point.observedAt))
+    || point.providerTimestamp !== null && !Number.isFinite(Date.parse(point.providerTimestamp))
+    || !(explicitGap || ["complete", "partial"].includes(point.completeness) && hasPrice)) {
+    throw new ProviderError("Invalid historical price evidence", provider, "invalid_response", false);
   }
 }
 

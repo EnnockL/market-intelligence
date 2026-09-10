@@ -63,7 +63,11 @@ export class ValidationAutomationService {
         registeredAt: h.registered_at,
         cutoffAt,
         runs: windows,
-        completed: (validations.data ?? []) as any,
+        completed: (validations.data ?? []).map(row => ({
+          phase: row.phase,
+          decision: row.decision,
+          windowEnd: row.window_end,
+        })),
       });
       const saved = await this.db
         .from("strategy_validation_window_plans")

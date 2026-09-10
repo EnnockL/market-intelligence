@@ -2,6 +2,15 @@ import type { IngestionRepository } from "@/repositories/ingestion-repository";
 import type { HistoricalLiquidityProvider } from "@/services/liquidity/provider";
 import type { TokenRiskProvider } from "@/services/token-risk/provider";
 
+type WalletEvidenceBatch = { runId: string; targets: number; recordsProcessed: number; errors: string[] };
+
+export class WalletEvidenceBatchError extends Error {
+  readonly code = "WALLET_EVIDENCE_BATCH_PARTIAL";
+  constructor(readonly result: WalletEvidenceBatch) {
+    super(`WALLET_EVIDENCE_BATCH_PARTIAL: ${result.errors.length} evidence operations failed for ${result.targets} targets; ${result.recordsProcessed} records saved`);
+  }
+}
+
 export async function runWalletEvidence(
   liquidity: HistoricalLiquidityProvider,
   risk: TokenRiskProvider,
@@ -19,10 +28,10 @@ export async function runWalletEvidence(
       new Date(informationCutoffAt).getTime() - 3_600_000,
     ).toISOString();
     for (const target of targets) {
-      const from = new Date(new Date(target.from).getTime() - 60_000).toISOString();
-      const to = new Date(new Date(target.to).getTime() + 60_000).toISOString();
+      const from = new Date(new Date(target.from).getTime() - 120_000).toISOString();
+      const to = target.to;
       try {
-        if (!(await repository.hasLiquidityEvidence(target.assetId, liquidity.name, from, to))) {
+        if (!(await repository.hasLiquidityEvidence(target.assetId, target.to))) {
           const points = await liquidity.getHistoricalLiquidity({ ...target, from, to, informationCutoffAt });
           processed += await repository.saveLiquiditySnapshots(points);
         }
@@ -41,11 +50,17 @@ export async function runWalletEvidence(
         await repository.recordProviderError(runId, risk.name, error);
       }
     }
+    const result = { runId, targets: targets.length, recordsProcessed: processed, errors };
+    if (errors.length) throw new WalletEvidenceBatchError(result);
     await repository.finishRun(runId, processed);
-    return { runId, targets: targets.length, recordsProcessed: processed, errors };
+    return result;
   } catch (error) {
-    await repository.recordProviderError(runId, providerName, error);
-    await repository.failRun(runId, error);
+    const context = error instanceof WalletEvidenceBatchError ? {
+      targets: error.result.targets, recordsProcessed: error.result.recordsProcessed,
+      failedOperations: error.result.errors.length,
+    } : {};
+    try { await repository.recordProviderError(runId, providerName, error, context); }
+    finally { await repository.failRun(runId, error, processed); }
     throw error;
   }
 }

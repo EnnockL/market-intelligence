@@ -1,4 +1,4 @@
-export const POSITION_ENGINE_VERSION = "weighted-average-v1" as const;
+export const POSITION_ENGINE_VERSION = "weighted-average-v2" as const;
 export interface EnrichedWalletTrade {
   id: string; signature: string; instructionIndex: number; token: string; side: "buy" | "sell";
   quantity: number; occurredAt: string; tokenPriceUsd: number | null; feeUsd: number | null;
@@ -10,6 +10,8 @@ export interface TradeCycle {
   proceedsUsd: number | null; realizedPnlUsd: number | null; unrealizedPnlUsd: number | null;
   returnPercent: number | null; firstEntryAt: string; finalExitAt: string | null; holdingSeconds: number | null;
   pricingCompleteness: number; transactionCompleteness: number; executionCompleteness: number; informationCompleteness: number; dataQuality: number;
+  /** Exact per-event evidence predicate; rounded display percentages are not proof. */
+  allRequiredEvidencePresent: boolean;
   engineVersion: typeof POSITION_ENGINE_VERSION; transactionIds: string[];
 }
 export interface WalletPnlMetrics {
@@ -26,11 +28,19 @@ export function reconstructTradeCycles(input: EnrichedWalletTrade[], currentPric
   for (const event of events) {
     if (!cycle && event.side === "sell") continue;
     if (!cycle) cycle = emptyCycle(event.token, ++cycleNumber, event.occurredAt);
-    const valid = event.quantity > 0 && Number.isFinite(event.quantity) && (event.side === "buy" || event.quantity <= cycle.quantity + 1e-12);
-    cycle.total += 1; cycle.valid += valid ? 1 : 0; cycle.priced += event.pricingComplete && event.tokenPriceUsd !== null ? 1 : 0; cycle.executionKnown += event.executionComplete && event.feeUsd !== null ? 1 : 0; cycle.informationTotal += Math.max(0, Math.min(100, event.informationCompleteness)); cycle.transactionIds.push(event.id);
+    const valid = event.quantity > 0 && Number.isFinite(event.quantity)
+      && (event.side === "buy" || event.side === "sell" && event.quantity <= cycle.quantity + 1e-12);
+    const price = event.tokenPriceUsd !== null && Number.isFinite(event.tokenPriceUsd) && event.tokenPriceUsd > 0 ? event.tokenPriceUsd : null;
+    const fee = event.feeUsd !== null && Number.isFinite(event.feeUsd) && event.feeUsd >= 0 ? event.feeUsd : null;
+    const pricingKnown = event.pricingComplete === true && price !== null;
+    const executionKnown = event.executionComplete === true && fee !== null;
+    cycle.allRequiredEvidencePresent = cycle.allRequiredEvidencePresent && valid && pricingKnown && executionKnown
+      && event.informationCompleteness === 100;
+    cycle.total += 1; cycle.valid += valid ? 1 : 0; cycle.priced += pricingKnown ? 1 : 0; cycle.executionKnown += executionKnown ? 1 : 0;
+    cycle.informationTotal += Number.isFinite(event.informationCompleteness) ? Math.max(0, Math.min(100, event.informationCompleteness)) : 0;
+    cycle.transactionIds.push(event.id);
     if (!valid) continue;
-    const gross = event.tokenPriceUsd === null ? null : event.quantity * event.tokenPriceUsd;
-    const fee = event.feeUsd;
+    const gross = price === null ? null : event.quantity * price;
     if (event.side === "buy") {
       cycle.quantity += event.quantity;
       if (gross === null || fee === null || cycle.costRemaining === null) cycle.costRemaining = null;
@@ -64,7 +74,9 @@ export function reconstructTradeCycles(input: EnrichedWalletTrade[], currentPric
 
 export function calculateWalletPnlMetrics(cycles: TradeCycle[]): WalletPnlMetrics {
   const closed = cycles.filter((cycle) => cycle.finalExitAt !== null);
-  const verified = closed.filter((cycle) => cycle.dataQuality === 100 && cycle.returnPercent !== null && cycle.realizedPnlUsd !== null);
+  const verified = closed.filter((cycle) => cycle.allRequiredEvidencePresent === true && cycle.dataQuality === 100
+    && cycle.returnPercent !== null && Number.isFinite(cycle.returnPercent)
+    && cycle.realizedPnlUsd !== null && Number.isFinite(cycle.realizedPnlUsd));
   const returns = verified.map((cycle) => cycle.returnPercent!); const pnl = verified.map((cycle) => cycle.realizedPnlUsd!);
   const holds = verified.flatMap((cycle) => cycle.holdingSeconds === null ? [] : [cycle.holdingSeconds]);
   return { closedTrades: closed.length, wins: pnl.filter((value) => value > 0).length, losses: pnl.filter((value) => value < 0).length,
@@ -76,7 +88,8 @@ export function calculateWalletPnlMetrics(cycles: TradeCycle[]): WalletPnlMetric
 }
 
 export function calculateCompoundedMaxDrawdown(cycles: TradeCycle[]): number | null {
-  const returns = cycles.filter((cycle) => cycle.dataQuality === 100 && cycle.finalExitAt && cycle.returnPercent !== null)
+  const returns = cycles.filter((cycle) => cycle.allRequiredEvidencePresent === true && cycle.dataQuality === 100
+    && cycle.finalExitAt && cycle.returnPercent !== null && Number.isFinite(cycle.returnPercent))
     .sort((a, b) => a.finalExitAt!.localeCompare(b.finalExitAt!)).map((cycle) => cycle.returnPercent! / 100);
   if (!returns.length) return null;
   let equity = 1; let peak = 1; let maximum = 0;
@@ -84,8 +97,20 @@ export function calculateCompoundedMaxDrawdown(cycles: TradeCycle[]): number | n
   return maximum;
 }
 
-function emptyCycle(token: string, cycleNumber: number, firstEntryAt: string): MutableCycle { return { cycleNumber, token, status: "open", quantity: 0, investedUsd: 0, costBasisUsd: 0, averageEntryUsd: null, proceedsUsd: 0, realizedPnlUsd: 0, unrealizedPnlUsd: null, returnPercent: null, firstEntryAt, finalExitAt: null, holdingSeconds: null, pricingCompleteness: 0, transactionCompleteness: 0, executionCompleteness: 0, informationCompleteness: 0, dataQuality: 0, engineVersion: POSITION_ENGINE_VERSION, transactionIds: [], priced: 0, valid: 0, executionKnown: 0, informationTotal: 0, total: 0, costRemaining: 0 }; }
-function finalize(cycle: MutableCycle): TradeCycle { const pricingCompleteness = percent(cycle.priced, cycle.total); const transactionCompleteness = percent(cycle.valid, cycle.total); const executionCompleteness = percent(cycle.executionKnown, cycle.total); const informationCompleteness = cycle.total ? Math.round(cycle.informationTotal / cycle.total) : 0; const dataQuality = Math.round(pricingCompleteness * .4 + transactionCompleteness * .2 + executionCompleteness * .2 + informationCompleteness * .2); const { priced: _p, valid: _v, executionKnown: _e, informationTotal: _i, total: _t, costRemaining: _c, ...value } = cycle; return { ...value, status: dataQuality === 100 ? (cycle.finalExitAt ? "closed" : "open") : "incomplete", pricingCompleteness, transactionCompleteness, executionCompleteness, informationCompleteness, dataQuality }; }
+function emptyCycle(token: string, cycleNumber: number, firstEntryAt: string): MutableCycle { return { cycleNumber, token, status: "open", quantity: 0, investedUsd: 0, costBasisUsd: 0, averageEntryUsd: null, proceedsUsd: 0, realizedPnlUsd: 0, unrealizedPnlUsd: null, returnPercent: null, firstEntryAt, finalExitAt: null, holdingSeconds: null, pricingCompleteness: 0, transactionCompleteness: 0, executionCompleteness: 0, informationCompleteness: 0, dataQuality: 0, allRequiredEvidencePresent: true, engineVersion: POSITION_ENGINE_VERSION, transactionIds: [], priced: 0, valid: 0, executionKnown: 0, informationTotal: 0, total: 0, costRemaining: 0 }; }
+function finalize(cycle: MutableCycle): TradeCycle {
+  const pricingCompleteness = percent(cycle.priced, cycle.total);
+  const transactionCompleteness = percent(cycle.valid, cycle.total);
+  const executionCompleteness = percent(cycle.executionKnown, cycle.total);
+  const informationCompleteness = cycle.total ? Math.round(cycle.informationTotal / cycle.total) : 0;
+  const displayedQuality = Math.round(pricingCompleteness * .4 + transactionCompleteness * .2 + executionCompleteness * .2 + informationCompleteness * .2);
+  // Legacy readers also use dataQuality === 100. Keep that sentinel reserved
+  // for genuinely complete v2 evidence even if display components round to 100.
+  const dataQuality = cycle.allRequiredEvidencePresent ? displayedQuality : Math.min(99, displayedQuality);
+  const { priced: _p, valid: _v, executionKnown: _e, informationTotal: _i, total: _t, costRemaining: _c, ...value } = cycle;
+  return { ...value, status: cycle.allRequiredEvidencePresent ? (cycle.finalExitAt ? "closed" : "open") : "incomplete",
+    pricingCompleteness, transactionCompleteness, executionCompleteness, informationCompleteness, dataQuality };
+}
 function dedupe(items: EnrichedWalletTrade[]) { return [...new Map(items.map((item) => [`${item.signature}:${item.instructionIndex}`, item])).values()]; }
 function addNullable(current: number | null, next: number | null) { return current === null || next === null ? null : current + next; }
 function percent(value: number, total: number) { return total ? Math.round(value / total * 100) : 0; }

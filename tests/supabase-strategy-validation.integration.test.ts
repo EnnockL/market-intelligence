@@ -147,13 +147,57 @@ suite("Supabase strategy validation and runtime governance v1", () => {
   });
 
   it("keeps research-cycle history immutable", async () => {
+    const asset = await db.from("assets").select("id").limit(1).single();
+    expect(asset.error).toBeNull();
+    const run = crypto.randomUUID();
+    const cutoff = new Date().toISOString();
+    const definition = await db
+      .from("strategy_definitions")
+      .insert({
+        strategy_key: `integration-strategy-${run}`, version: 1, name: "Integration fixture",
+        market: "integration", timeframe: "1d", setup_type: "EMA_VWAP_MOMENTUM",
+        definition: { run }, definition_hash: `def-${run}`.padEnd(64, "0"),
+        effective_at: cutoff, available_at: cutoff,
+      })
+      .select("id")
+      .single();
+    expect(definition.error).toBeNull();
+    const hypothesis = await db
+      .from("strategy_hypotheses")
+      .insert({
+        hypothesis_key: `integration-hypothesis-${run}`, strategy_definition_id: definition.data!.id,
+        hypothesis_version: 1, thesis: "integration", invalidation_condition: "integration",
+        expected_mechanism: "integration", registered_at: cutoff, information_cutoff_at: cutoff,
+        available_at: cutoff, hypothesis_hash: `hyp-${run}`.padEnd(64, "0"),
+      })
+      .select("id")
+      .single();
+    expect(hypothesis.error).toBeNull();
+    const evaluationRun = await db
+      .from("strategy_evaluation_runs")
+      .insert({
+        run_key: `integration-eval-${run}`, lab_version: "integration",
+        strategy_definition_id: definition.data!.id, asset_id: asset.data!.id,
+        information_cutoff_at: cutoff, available_at: cutoff, status: "INSUFFICIENT_DATA",
+        reason: "integration fixture", input_hash: `input-${run}`.padEnd(64, "0"),
+        candle_count: 0, setup_count: 0, trade_count: 0, sample_size: 0, minimum_sample_size: 30,
+        metrics: {}, result_hash: `eval-${run}`.padEnd(64, "0"),
+      })
+      .select("id")
+      .single();
+    expect(evaluationRun.error).toBeNull();
     const row = await db
       .from("strategy_research_cycle_runs")
+      .insert({
+        cycle_key: `integration-cycle-${run}`, cycle_version: "integration",
+        strategy_definition_id: definition.data!.id, hypothesis_id: hypothesis.data!.id,
+        evaluation_run_id: evaluationRun.data!.id, status: "COLLECTING",
+        blockers: [], progress: {}, information_cutoff_at: cutoff, available_at: cutoff,
+        result_hash: `cycle-${run}`.padEnd(64, "0"),
+      })
       .select("id")
-      .limit(1)
-      .maybeSingle();
+      .single();
     expect(row.error).toBeNull();
-    expect(row.data).not.toBeNull();
     const mutation = await db
       .from("strategy_research_cycle_runs")
       .update({ status: "READY_FOR_VALIDATION" })

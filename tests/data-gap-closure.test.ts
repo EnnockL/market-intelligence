@@ -1,4 +1,16 @@
 import{describe,expect,it}from"vitest";import{buildGapClosure}from"@/domain/data-gap-closure";
 const cutoff="2026-08-18T10:00:00.000Z",ref={id:"e1",type:"liquidity",availableAt:cutoff,source:"test",dataQuality:90};
 function input(overrides:any={}){return{candidateId:"c1",candidateRevision:1,cutoff,previousFeatures:{dataQuality:0,liquidity:null},liquidity:null,risk:null,wallet:{rawWalletCount:null,verifiedWalletCount:null,confirmedIndependent:null,relationshipCoverage:null,clusterAdjustedCount:null,convergenceWindowMs:null,evidence:[]},tokenAgeSeconds:null,priceAcceleration:null,volumeAcceleration:null,...overrides}}
+describe("assessed safety is distinct from known safety", () => {
+  it.each([0, 100])("keeps an UNKNOWN assessment partial even with %i risk coverage", (coverage) => {
+    const result = buildGapClosure(input({ risk: { status: "UNKNOWN", coverage, evidence: { ...ref, type: "risk" } } }));
+    expect(result.gaps.safety).toBe("PARTIAL");
+    expect(result.features.riskStatus).toBe("UNKNOWN");
+  });
+  it("treats a known high-risk assessment as known evidence, not a safe token", () => {
+    const result = buildGapClosure(input({ risk: { status: "HIGH_RISK", coverage: 100, evidence: { ...ref, type: "risk" } } }));
+    expect(result.gaps.safety).toBe("CLOSED");
+    expect(result.features.riskStatus).toBe("HIGH_RISK");
+  });
+});
 describe("data gap closure",()=>{it("preserves missing data as UNKNOWN",()=>{const r=buildGapClosure(input());expect(r.features.liquidity).toBeNull();expect(r.gaps.safety).toBe("UNKNOWN");expect(r.gaps.verified_wallet_quality).toBe("UNKNOWN")});it("closes only evidence-backed gaps",()=>{const r=buildGapClosure(input({liquidity:{value:55000,evidence:ref},tokenAgeSeconds:300}));expect(r.gaps.liquidity).toBe("CLOSED");expect(r.gaps.token_age).toBe("CLOSED");expect(r.gaps.token_risk_coverage).toBe("UNKNOWN")});it("marks incomplete risk coverage partial",()=>expect(buildGapClosure(input({risk:{status:"LOW_RISK",coverage:55,evidence:{...ref,type:"risk"}}})).gaps.token_risk_coverage).toBe("PARTIAL"));it("rejects future evidence",()=>expect(()=>buildGapClosure(input({liquidity:{value:1,evidence:{...ref,availableAt:"2026-08-19T00:00:00Z"}}}))).toThrow("FUTURE_EVIDENCE_REJECTED"));it("is deterministic across evaluation times when material evidence is unchanged",()=>{const a=buildGapClosure(input()),b=buildGapClosure(input({cutoff:"2026-08-18T11:00:00.000Z"}));expect(a.closureHash).toBe(b.closureHash)})});

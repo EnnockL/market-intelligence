@@ -1,8 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
-import { runWalletPnl, selectFairEnrichmentBatch } from "@/workers/wallet-pnl";
+import { runWalletPnl, selectFairEnrichmentBatch, WalletPnlBatchError } from "@/workers/wallet-pnl";
 import { WALLET_VERIFICATION_POLICY } from "@/domain/wallet-verification";
-import { runWalletEvidence } from "@/workers/wallet-evidence";
+import { runWalletEvidence, WalletEvidenceBatchError } from "@/workers/wallet-evidence";
 import { ProviderError } from "@/services/market-data/provider";
+import { unavailableHistorical } from "@/services/crypto-market/provider";
+
+function historicalPoint(mint: string) {
+  return { ...unavailableHistorical(mint, "2026-08-25T00:00:00Z", "test-market"), priceUsd: 1, completeness: "partial" as const };
+}
 
 describe("wallet verification pipeline", () => {
   it("selects enrichment work fairly across wallets without losing deterministic order", () => {
@@ -53,15 +58,16 @@ describe("wallet verification pipeline", () => {
       enrichedTransactionIds: vi.fn().mockResolvedValue(new Set(["tx-0", "tx-1"])),
       saveTransactionEnrichment: vi.fn().mockResolvedValue(undefined),
       recordProviderError: vi.fn().mockResolvedValue(undefined),
-      rebuildWalletPnl: vi.fn().mockResolvedValue(0),
+      rebuildWalletPnl: vi.fn().mockResolvedValue({ cycles: 0, walletsProcessed: 3, blocked: [], informationBlockers: ["VERIFIED_EXECUTION_CONTEXT_UNAVAILABLE"] }),
       finishRun: vi.fn().mockResolvedValue(undefined),
     } as any;
     const provider = {
       name: "test-market",
-      getHistorical: vi.fn().mockResolvedValue(null),
+      getHistorical: vi.fn().mockImplementation(async ({ mintAddress }) => historicalPoint(mintAddress)),
     } as any;
     await expect(runWalletPnl(provider, repository, 500)).resolves.toMatchObject({ status: "succeeded", enriched: 50 });
-    expect(repository.walletTransactionsForEnrichment).toHaveBeenCalledWith();
+    expect(repository.walletTransactionsForEnrichment).toHaveBeenCalledWith("test-market", 50);
+    expect(repository.enrichedTransactionIds).not.toHaveBeenCalled();
     expect(repository.saveTransactionEnrichment).toHaveBeenCalledTimes(50);
     expect(provider.getHistorical).toHaveBeenCalledTimes(100);
     expect(repository.rebuildWalletPnl).toHaveBeenCalledWith("test-market");
@@ -77,21 +83,24 @@ describe("wallet verification pipeline", () => {
       enrichedTransactionIds: vi.fn().mockResolvedValue(new Set()),
       saveTransactionEnrichment: vi.fn().mockResolvedValue(undefined),
       recordProviderError: vi.fn().mockResolvedValue(undefined),
-      rebuildWalletPnl: vi.fn().mockResolvedValue(1),
+      rebuildWalletPnl: vi.fn().mockResolvedValue({ cycles: 1, walletsProcessed: 1, blocked: [], informationBlockers: ["VERIFIED_EXECUTION_CONTEXT_UNAVAILABLE"] }),
       finishRun: vi.fn().mockResolvedValue(undefined),
+      failRun: vi.fn().mockResolvedValue(undefined),
     } as any;
     const provider = {
       name: "test-market",
-      getHistorical: vi.fn().mockRejectedValueOnce(new Error("NO_PRICE")).mockResolvedValue({ priceUsd: 1 }),
+      getHistorical: vi.fn().mockRejectedValueOnce(new Error("NO_PRICE")).mockImplementation(async ({ mintAddress }) => historicalPoint(mintAddress)),
     } as any;
-    const result = await runWalletPnl(provider, repository, 10);
-    expect(result).toMatchObject({ considered: 2, enriched: 1, cycles: 1 });
-    expect(result.errors[0]).toContain("bad:NO_PRICE");
+    const error = await runWalletPnl(provider, repository, 10).catch(error => error);
+    expect(error).toBeInstanceOf(WalletPnlBatchError);
+    expect(error.result).toMatchObject({ considered: 2, enriched: 1, cycles: 1, recordsProcessed: 1 });
+    expect(error.result.errors[0]).toContain("bad:NO_PRICE");
     expect(repository.saveTransactionEnrichment).toHaveBeenCalledOnce();
-    expect(repository.finishRun).toHaveBeenCalled();
+    expect(repository.finishRun).not.toHaveBeenCalled();
+    expect(repository.failRun).toHaveBeenCalledWith("run-3", error, 1);
   });
 
-  it("persists permanent provider failures as UNKNOWN so later work is not starved", async () => {
+  it("leaves authorization failures pending and reports blocked rebuilds without fabricated UNKNOWN enrichments", async () => {
     const repository = {
       startRun: vi.fn().mockResolvedValue("run-4"),
       walletTransactionsForEnrichment: vi.fn().mockResolvedValue([
@@ -100,8 +109,9 @@ describe("wallet verification pipeline", () => {
       enrichedTransactionIds: vi.fn().mockResolvedValue(new Set()),
       saveTransactionEnrichment: vi.fn().mockResolvedValue(undefined),
       recordProviderError: vi.fn().mockResolvedValue(undefined),
-      rebuildWalletPnl: vi.fn().mockResolvedValue(0),
+      rebuildWalletPnl: vi.fn().mockResolvedValue({ cycles: 0, walletsProcessed: 0, blocked: [{ walletId: "deep-wallet", reason: "READ_BUDGET_EXCEEDED" }], informationBlockers: ["VERIFIED_EXECUTION_CONTEXT_UNAVAILABLE"] }),
       finishRun: vi.fn().mockResolvedValue(undefined),
+      failRun: vi.fn().mockResolvedValue(undefined),
     } as any;
     const provider = {
       name: "test-market",
@@ -110,16 +120,12 @@ describe("wallet verification pipeline", () => {
       ),
     } as any;
 
-    const result = await runWalletPnl(provider, repository, 10);
-
-    expect(result).toMatchObject({ considered: 1, enriched: 0, unavailable: 1 });
-    expect(repository.saveTransactionEnrichment).toHaveBeenCalledWith(
-      expect.objectContaining({
-        transactionId: "permanent",
-        tokenPoint: expect.objectContaining({ completeness: "unavailable", priceUsd: null }),
-        solPoint: expect.objectContaining({ completeness: "unavailable", priceUsd: null }),
-      }),
-    );
+    const error = await runWalletPnl(provider, repository, 10).catch(error => error);
+    expect(error).toBeInstanceOf(WalletPnlBatchError);
+    expect(error.result).toMatchObject({ considered: 1, enriched: 0, unavailable: 0, blockedWallets: [{ walletId: "deep-wallet", reason: "READ_BUDGET_EXCEEDED" }] });
+    expect(repository.saveTransactionEnrichment).not.toHaveBeenCalled();
+    expect(repository.finishRun).not.toHaveBeenCalled();
+    expect(repository.failRun).toHaveBeenCalledWith("run-4", error, 0);
   });
 
   it("isolates unknown liquidity while still persisting risk evidence", async () => {
@@ -133,13 +139,18 @@ describe("wallet verification pipeline", () => {
       saveTokenRiskAssessment: vi.fn().mockResolvedValue(1),
       recordProviderError: vi.fn().mockResolvedValue(undefined),
       finishRun: vi.fn().mockResolvedValue(undefined),
+      failRun: vi.fn().mockResolvedValue(undefined),
     } as any;
     const liquidity = { name: "limited-liquidity", getHistoricalLiquidity: vi.fn().mockRejectedValue(new Error("NOT_AUTHORIZED")) } as any;
     const risk = { name: "risk-fallback", assess: vi.fn().mockResolvedValue({ classification: "UNKNOWN" }) } as any;
-    const result = await runWalletEvidence(liquidity, risk, repository, 5, "2026-08-25T00:00:00Z");
-    expect(result.recordsProcessed).toBe(1);
-    expect(result.errors[0]).toContain("LIQUIDITY:asset-1:NOT_AUTHORIZED");
+    const error = await runWalletEvidence(liquidity, risk, repository, 5, "2026-08-25T00:00:00Z").catch(error => error);
+    expect(error).toBeInstanceOf(WalletEvidenceBatchError);
+    expect(error.result.recordsProcessed).toBe(1);
+    expect(error.result.errors[0]).toContain("LIQUIDITY:asset-1:NOT_AUTHORIZED");
     expect(repository.saveTokenRiskAssessment).toHaveBeenCalledOnce();
-    expect(repository.finishRun).toHaveBeenCalled();
+    expect(repository.hasLiquidityEvidence).toHaveBeenCalledWith("asset-1", "2026-08-02T00:00:00Z");
+    expect(liquidity.getHistoricalLiquidity).toHaveBeenCalledWith(expect.objectContaining({ to: "2026-08-02T00:00:00Z", informationCutoffAt: "2026-08-25T00:00:00Z" }));
+    expect(repository.finishRun).not.toHaveBeenCalled();
+    expect(repository.failRun).toHaveBeenCalledWith("run-2", error, 1);
   });
 });

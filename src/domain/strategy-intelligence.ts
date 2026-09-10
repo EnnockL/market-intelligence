@@ -1,15 +1,17 @@
 import { deterministicDigest } from "./events";
 import type { StrategyTrade } from "./strategy-pattern-lab";
+import { hasVerifiedResearchProvenance, type IntelligenceProvenance } from "./strategy-intelligence-provenance";
 
-export const STRATEGY_RESEARCH_VERSION = "strategy-research-v1";
-export const STRATEGY_SELECTOR_VERSION = "strategy-selector-v1";
-export type ResearchSplit = "TRAIN" | "VALIDATION" | "OUT_OF_SAMPLE";
+export const STRATEGY_RESEARCH_VERSION = "strategy-research-v2";
+export const STRATEGY_SELECTOR_VERSION = "strategy-selector-v2";
+export type ResearchSplit = "TRAIN" | "VALIDATION" | "OUT_OF_SAMPLE" | "EXPLORATION";
 export type IntelligenceStatus = "AVAILABLE" | "INSUFFICIENT_DATA";
 
 export interface StrategyResearchInput {
   strategyId: string; strategyVersion: number; evaluationRunId: string; assetId: string; asset: string; assetClass: string;
   market: string; timeframe: string; windowStart: string; windowEnd: string; informationCutoffAt: string;
   session: string; regime: string; split: ResearchSplit; minimumSampleSize: number; setupCount?: number; dataQuality: number | null; trades: StrategyTrade[];
+  availableAt?: string; provenance?: IntelligenceProvenance; expectedTradeCount?: number;
 }
 export interface StrategyPerformanceSnapshot {
   snapshotKey: string; performanceVersion: string; datasetHash: string; status: IntelligenceStatus; reason: string | null;
@@ -18,17 +20,20 @@ export interface StrategyPerformanceSnapshot {
   split: ResearchSplit; sampleSize: number; setupCount: number; tradeCount: number; metrics: Record<string, number | null>;
   segments: Array<{ dimension: string; value: string; sampleSize: number; status: IntelligenceStatus; expectedValueR: number | null; winRate: number | null }>;
   dataQuality: number | null;
+  availableAt: string; provenance?: IntelligenceProvenance;
 }
 
 export function buildStrategyPerformanceSnapshot(input: StrategyResearchInput): StrategyPerformanceSnapshot {
   const trades = [...input.trades].filter(item => item.enteredAt >= input.windowStart && item.exitedAt <= input.windowEnd && item.exitedAt <= input.informationCutoffAt).sort((a, b) => a.enteredAt.localeCompare(b.enteredAt) || a.tradeKey.localeCompare(b.tradeKey));
   const datasetHash = deterministicDigest(trades.map(item => ({ key: item.tradeKey, exit: item.exitedAt, r: item.rMultiple, refs: item.evidenceRefs })));
-  const enough = trades.length >= input.minimumSampleSize;
+  const complete = input.expectedTradeCount === undefined || trades.length === input.expectedTradeCount;
+  const enough = complete && trades.length >= input.minimumSampleSize;
   const raw = researchMetrics(trades);
   const metrics = enough ? raw : Object.fromEntries(Object.keys(raw).map(key => [key, null]));
-  const segments = researchSegments(trades, input.minimumSampleSize, input);
-  const identity = { version: STRATEGY_RESEARCH_VERSION, strategyId: input.strategyId, strategyVersion: input.strategyVersion, evaluationRunId: input.evaluationRunId, windowStart: input.windowStart, windowEnd: input.windowEnd, informationCutoffAt: input.informationCutoffAt, split: input.split, datasetHash };
-  return { snapshotKey: deterministicDigest(identity), performanceVersion: STRATEGY_RESEARCH_VERSION, datasetHash, status: enough ? "AVAILABLE" : "INSUFFICIENT_DATA", reason: enough ? null : "MINIMUM_SAMPLE_SIZE_NOT_MET", strategyId: input.strategyId, strategyVersion: input.strategyVersion, evaluationRunId: input.evaluationRunId, assetId: input.assetId, asset: input.asset, assetClass: input.assetClass, market: input.market, timeframe: input.timeframe, windowStart: input.windowStart, windowEnd: input.windowEnd, informationCutoffAt: input.informationCutoffAt, session: input.session, regime: input.regime, split: input.split, sampleSize: trades.length, setupCount: input.setupCount ?? trades.length, tradeCount: trades.length, metrics, segments, dataQuality: input.dataQuality };
+  const segments = researchSegments(trades, complete ? input.minimumSampleSize : Infinity, input);
+  const split = input.split === "TRAIN" || hasVerifiedResearchProvenance(input.provenance) ? input.split : "EXPLORATION";
+  const identity = { version: STRATEGY_RESEARCH_VERSION, strategyId: input.strategyId, strategyVersion: input.strategyVersion, evaluationRunId: input.evaluationRunId, windowStart: input.windowStart, windowEnd: input.windowEnd, informationCutoffAt: input.informationCutoffAt, split, datasetHash, provenance: input.provenance ?? null, expectedTradeCount: input.expectedTradeCount ?? null };
+  return { snapshotKey: deterministicDigest(identity), performanceVersion: STRATEGY_RESEARCH_VERSION, datasetHash, status: enough ? "AVAILABLE" : "INSUFFICIENT_DATA", reason: !complete ? "EVALUATION_TRADE_LEDGER_INCOMPLETE" : !enough ? "MINIMUM_SAMPLE_SIZE_NOT_MET" : input.provenance?.reason ?? (split === "EXPLORATION" ? "FROZEN_DATASET_PROVENANCE_UNAVAILABLE" : null), strategyId: input.strategyId, strategyVersion: input.strategyVersion, evaluationRunId: input.evaluationRunId, assetId: input.assetId, asset: input.asset, assetClass: input.assetClass, market: input.market, timeframe: input.timeframe, windowStart: input.windowStart, windowEnd: input.windowEnd, informationCutoffAt: input.informationCutoffAt, session: input.session, regime: input.regime, split, sampleSize: trades.length, setupCount: input.setupCount ?? trades.length, tradeCount: trades.length, metrics, segments, dataQuality: input.dataQuality, availableAt: input.availableAt ?? input.informationCutoffAt, provenance: input.provenance };
 }
 
 function researchMetrics(trades: StrategyTrade[]) {
@@ -58,8 +63,10 @@ export interface StrategySelectorContext { assetId: string; asset: string; asset
 export interface RankedStrategy { strategyId: string; strategyVersion: number; snapshotKey: string; status: "ELIGIBLE" | "POOR_FIT" | "INSUFFICIENT_DATA"; fitScore: number | null; sampleSize: number; metrics: Record<string, number | null>; evidenceQuality: "HIGH" | "MEDIUM" | "LOW" | "UNKNOWN"; reasons: string[]; }
 
 export function selectStrategies(context: StrategySelectorContext, source: StrategyPerformanceSnapshot[]) {
-  const eligibleSnapshots = source.filter(item => item.assetId === context.assetId && item.timeframe === context.timeframe && item.informationCutoffAt <= context.cutoffAt && item.split !== "TRAIN").sort((a, b) => b.informationCutoffAt.localeCompare(a.informationCutoffAt) || b.snapshotKey.localeCompare(a.snapshotKey));
-  const snapshots = [...new Map(eligibleSnapshots.map(item => [`${item.strategyId}:${item.strategyVersion}`, item])).values()].sort((a, b) => a.strategyId.localeCompare(b.strategyId) || a.strategyVersion - b.strategyVersion);
+  const eligibleSnapshots = source.filter(item => item.performanceVersion === STRATEGY_RESEARCH_VERSION && hasVerifiedResearchProvenance(item.provenance) && item.assetId === context.assetId && item.timeframe === context.timeframe && Date.parse(item.informationCutoffAt) <= Date.parse(context.cutoffAt) && Date.parse(item.availableAt) <= Date.parse(context.cutoffAt) && (item.split === "VALIDATION" || item.split === "OUT_OF_SAMPLE")).sort((a, b) => b.informationCutoffAt.localeCompare(a.informationCutoffAt) || b.snapshotKey.localeCompare(a.snapshotKey));
+  const latest = new Map<string, StrategyPerformanceSnapshot>();
+  for (const item of eligibleSnapshots) { const key = `${item.strategyId}:${item.strategyVersion}`; if (!latest.has(key)) latest.set(key, item); }
+  const snapshots = [...latest.values()].sort((a, b) => a.strategyId.localeCompare(b.strategyId) || a.strategyVersion - b.strategyVersion);
   const ranked: RankedStrategy[] = snapshots.map(item => rankSnapshot(context, item)).sort((a, b) => (b.fitScore ?? -1) - (a.fitScore ?? -1) || a.strategyId.localeCompare(b.strategyId));
   const eligible = ranked.filter(item => item.status === "ELIGIBLE");
   const result = { selectorVersion: STRATEGY_SELECTOR_VERSION, context, status: eligible.length ? "RANKED" as const : "NO_STRATEGY_ELIGIBLE" as const, rankedStrategies: ranked, selectedStrategy: eligible[0] ?? null };

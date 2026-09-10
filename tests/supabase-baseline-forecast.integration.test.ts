@@ -1,2 +1,37 @@
-import{beforeAll,describe,expect,it}from"vitest";import{createClient,type SupabaseClient}from"@supabase/supabase-js";import{deterministicDigest}from"@/domain/events";import{BaselineForecastService}from"@/services/baseline-forecast/service";
-const enabled=process.env.RUN_SUPABASE_INTEGRATION==="1",suite=enabled?describe:describe.skip;let db:SupabaseClient;suite("Supabase baseline forecast v1",()=>{beforeAll(()=>db=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,process.env.SUPABASE_SERVICE_ROLE_KEY!,{auth:{persistSession:false,autoRefreshToken:false}}));it("creates a traceable insufficient baseline without invented values",async()=>{const{data:asset,error}=await db.from("assets").select("id").limit(1).single();expect(error).toBeNull();const cutoff="2026-08-17T19:00:00.000Z",key=deterministicDigest({integration:"baseline-v1",asset:asset!.id});const inserted=await db.from("forecasts").upsert({forecast_key:key,asset_id:asset!.id,forecast_version:"forecast-infrastructure-v1",forecast_method:"INSUFFICIENT_DATA",model_version:"none",feature_set_version:"forecast-features-v1",information_cutoff_at:cutoff,available_at:cutoff,horizon:"30m",status:"INSUFFICIENT_DATA",reason:"INTEGRATION_TARGET",evidence_refs:[],agent_inputs:{}},{onConflict:"forecast_key",ignoreDuplicates:true});expect(inserted.error).toBeNull();const result=await new BaselineForecastService(db).run("2026-08-17T20:00:00.000Z");expect(result.evaluated).toBeGreaterThan(0);const{data:baseline,error:bError}=await db.from("forecasts").select("id,status,expected_return,agent_inputs").eq("asset_id",asset!.id).eq("forecast_version","historical-cohort-baseline-v1").eq("information_cutoff_at",cutoff).eq("horizon","30m").single();expect(bError).toBeNull();expect(baseline!.status).toBe("INSUFFICIENT_DATA");expect(baseline!.expected_return).toBeNull();expect(Number(baseline!.agent_inputs.sampleSize)).toBeLessThan(30);const{count}=await db.from("baseline_feature_snapshots").select("id",{count:"exact",head:true}).eq("forecast_id",baseline!.id);expect(count).toBe(1)},30000);it("keeps feature snapshots immutable",async()=>{const{data}=await db.from("baseline_feature_snapshots").select("id").limit(1).single();const result=await db.from("baseline_feature_snapshots").update({data_quality:100}).eq("id",data!.id);expect(result.error?.message).toContain("immutable")})});
+import { randomUUID } from "node:crypto";
+import { beforeAll, describe, expect, it } from "vitest";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { BASELINE_FORECAST_VERSION } from "@/domain/baseline-forecast";
+import { BaselineForecastService } from "@/services/baseline-forecast/service";
+
+// vitest.config enforces a distinct write-enabled Supabase test project.
+const suite = process.env.RUN_SUPABASE_INTEGRATION === "1" ? describe : describe.skip;
+suite("Supabase baseline forecast v2", () => {
+  let db: SupabaseClient;
+  beforeAll(() => { db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false, autoRefreshToken: false } }); });
+  it("commits a traceable insufficient stock bundle with immutable input evidence", async () => {
+    const assetId = randomUUID(), sourceId = randomUUID();
+    const cutoff = new Date().toISOString();
+    const asset = await db.from("assets").insert({ id: assetId, kind: "stock", symbol: `BASELINE_TEST_${assetId}`, name: "Isolated baseline fixture" });
+    expect(asset.error).toBeNull();
+    const source = await db.from("forecasts").insert({
+      id: sourceId, forecast_key: `baseline-test:${sourceId}`, asset_id: assetId,
+      forecast_version: "forecast-infrastructure-v1", forecast_method: "INSUFFICIENT_DATA",
+      model_version: "none", feature_set_version: "forecast-features-v1", information_cutoff_at: cutoff,
+      available_at: cutoff, horizon: "30m", status: "INSUFFICIENT_DATA", reason: "INTEGRATION_TARGET", evidence_refs: [], agent_inputs: {},
+    });
+    expect(source.error).toBeNull();
+    await new BaselineForecastService(db).run(cutoff);
+    const baseline = await db.from("forecasts").select("id,status,expected_return,agent_inputs")
+      .eq("asset_id", assetId).eq("forecast_version", BASELINE_FORECAST_VERSION).single();
+    expect(baseline.error).toBeNull();
+    expect(baseline.data).toMatchObject({ status: "INSUFFICIENT_DATA", expected_return: null, agent_inputs: { sampleSize: 0, sourceForecastId: sourceId } });
+    const id = baseline.data!.id;
+    const snapshot = await db.from("baseline_feature_snapshots").select("id").eq("forecast_id", id).single();
+    expect(snapshot.error).toBeNull();
+    expect((await db.from("baseline_forecast_bundles").select("forecast_id").eq("forecast_id", id).single()).error).toBeNull();
+    expect((await db.from("event_outbox").select("event_id").eq("entity_id", id).eq("event_type", "forecast.baseline_created").single()).error).toBeNull();
+    const mutation = await db.from("baseline_feature_snapshots").update({ data_quality: 100 }).eq("id", snapshot.data!.id);
+    expect(mutation.error?.message).toContain("immutable");
+  }, 30_000);
+});

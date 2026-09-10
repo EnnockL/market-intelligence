@@ -1,15 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { buildStrategyPerformanceSnapshot, selectStrategies, type StrategyResearchInput } from "../src/domain/strategy-intelligence";
 import type { StrategyTrade } from "../src/domain/strategy-pattern-lab";
+import { INTELLIGENCE_PROVENANCE_VERSION, type IntelligenceProvenance } from "../src/domain/strategy-intelligence-provenance";
 
 function trade(index: number, rMultiple = index % 3 === 0 ? -0.5 : 1): StrategyTrade {
   const enteredAt = new Date(Date.UTC(2026, 0, 1, 14, index * 5)).toISOString(), exitedAt = new Date(Date.parse(enteredAt) + 300_000).toISOString();
   return { tradeKey: `trade-${index}`, side: "LONG", setupAt: enteredAt, enteredAt, exitedAt, entry: 100, stop: 99, target: 102, exit: rMultiple > 0 ? 102 : 99, outcome: rMultiple > 0 ? "WIN" : "LOSS", rMultiple, mfeR: Math.max(0, rMultiple), maeR: Math.min(0, rMultiple), holdMinutes: 5, evidenceRefs: [`candle-${index}`], session: "NEW_YORK", weekday: "Monday", regime: "HIGH_VOLATILITY_MOMENTUM", entryHour: "09", volatilityBucket: "HIGH" };
 }
-function input(trades: StrategyTrade[], strategyId = "orb"): StrategyResearchInput { return { strategyId, strategyVersion: 1, evaluationRunId: `run-${strategyId}`, assetId: "btc", asset: "BTC", assetClass: "CRYPTO", market: "BTC-USD", timeframe: "5m", windowStart: "2026-01-01T00:00:00.000Z", windowEnd: "2026-01-02T00:00:00.000Z", informationCutoffAt: "2026-01-02T00:00:00.000Z", session: "NEW_YORK", regime: "HIGH_VOLATILITY_MOMENTUM", split: "OUT_OF_SAMPLE", minimumSampleSize: 30, dataQuality: 90, trades }; }
+// Synthetic manifest evidence tests ranking only. The current service never emits
+// VERIFIED and migration 0086 refuses it until a real manifest contract exists.
+const verifiedFixture: IntelligenceProvenance = { version: INTELLIGENCE_PROVENANCE_VERSION, status: "VERIFIED", reason: null, evaluationInputHash: "fixture-input", validationRunIds: ["fixture-validation"], observedPhases: ["OUT_OF_SAMPLE"], windowSource: "FROZEN_DATASET_MANIFEST", frozenDatasetId: "fixture-manifest" };
+function input(trades: StrategyTrade[], strategyId = "orb"): StrategyResearchInput { return { strategyId, strategyVersion: 1, evaluationRunId: `run-${strategyId}`, assetId: "btc", asset: "BTC", assetClass: "CRYPTO", market: "BTC-USD", timeframe: "5m", windowStart: "2026-01-01T00:00:00.000Z", windowEnd: "2026-01-02T00:00:00.000Z", informationCutoffAt: "2026-01-02T00:00:00.000Z", session: "NEW_YORK", regime: "HIGH_VOLATILITY_MOMENTUM", split: "OUT_OF_SAMPLE", provenance: verifiedFixture, minimumSampleSize: 30, dataQuality: 90, trades }; }
 const context = { assetId: "btc", asset: "BTC", assetClass: "CRYPTO", timeframe: "5m", session: "NEW_YORK", regime: "HIGH_VOLATILITY_MOMENTUM", volatilityBucket: "HIGH", liquidityBucket: "HIGH", cutoffAt: "2026-01-03T00:00:00.000Z", minimumSampleSize: 30 };
 
-describe("strategy intelligence v1", () => {
+describe("strategy intelligence v2", () => {
   it("hides performance percentages below minimum sample size", () => {
     const snapshot = buildStrategyPerformanceSnapshot(input(Array.from({ length: 10 }, (_, index) => trade(index))));
     expect(snapshot.status).toBe("INSUFFICIENT_DATA");
@@ -45,5 +49,36 @@ describe("strategy intelligence v1", () => {
     const train = buildStrategyPerformanceSnapshot({ ...input(Array.from({ length: 40 }, (_, index) => trade(index))), split: "TRAIN" });
     const future = buildStrategyPerformanceSnapshot({ ...input(Array.from({ length: 40 }, (_, index) => trade(index)), "future"), informationCutoffAt: "2026-01-04T00:00:00.000Z", windowEnd: "2026-01-04T00:00:00.000Z" });
     expect(selectStrategies(context, [train, future]).status).toBe("NO_STRATEGY_ELIGIBLE");
+  });
+
+  it("cannot turn a caller-supplied VALIDATION/OOS label into proof", () => {
+    for (const split of ["VALIDATION", "OUT_OF_SAMPLE"] as const) {
+      const snapshot = buildStrategyPerformanceSnapshot({ ...input(Array.from({ length: 40 }, (_, i) => trade(i))), split, provenance: undefined });
+      expect(snapshot.split).toBe("EXPLORATION");
+      expect(snapshot.reason).toBe("FROZEN_DATASET_PROVENANCE_UNAVAILABLE");
+      expect(snapshot.metrics.expectedValueR).not.toBeNull();
+      expect(selectStrategies(context, [snapshot]).selectedStrategy).toBeNull();
+    }
+  });
+
+  it("excludes legacy snapshots and results published after the selection cutoff", () => {
+    const snapshot = buildStrategyPerformanceSnapshot(input(Array.from({ length: 40 }, (_, i) => trade(i))));
+    const legacy = { ...snapshot, performanceVersion: "strategy-research-v1" };
+    const late = { ...snapshot, availableAt: "2026-01-04T00:00:00.000Z" };
+    expect(selectStrategies(context, [legacy, late]).status).toBe("NO_STRATEGY_ELIGIBLE");
+  });
+
+  it("does not quietly rank a partial nested trade response as a complete dataset", () => {
+    const snapshot = buildStrategyPerformanceSnapshot({ ...input(Array.from({ length: 40 }, (_, i) => trade(i))), expectedTradeCount: 80 });
+    expect(snapshot).toMatchObject({ status: "INSUFFICIENT_DATA", reason: "EVALUATION_TRADE_LEDGER_INCOMPLETE" });
+    expect(snapshot.metrics.expectedValueR).toBeNull();
+    expect(snapshot.segments.every(segment => segment.expectedValueR === null)).toBe(true);
+  });
+
+  it("uses newest per-strategy evidence instead of overwriting it with an older snapshot", () => {
+    const old = buildStrategyPerformanceSnapshot(input(Array.from({ length: 40 }, (_, i) => trade(i))));
+    const latest = buildStrategyPerformanceSnapshot({ ...input(Array.from({ length: 40 }, (_, i) => trade(i, i % 2 ? -2 : 1))), evaluationRunId: "latest", informationCutoffAt: "2026-01-02T12:00:00.000Z" });
+    expect(selectStrategies(context, [old, latest]).selectedStrategy).toBeNull();
+    expect(selectStrategies(context, [latest, old]).rankedStrategies[0].snapshotKey).toBe(latest.snapshotKey);
   });
 });
