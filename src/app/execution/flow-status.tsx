@@ -19,7 +19,7 @@ export async function FlowStatus({db}:{db:SupabaseClient}) {
       <li>En skapad proposal måste klara Trade Eligibility: bland annat riktning, storlek, stop/target, risk och färsk data.</li>
       <li>Kontobindning, instrument, disponibelt kapital och slutliga orderspärrar måste också godkännas.</li>
     </ol>
-    <p>ELIGIBLE är inget orderlöfte. Den ordinarie producenten bygger för närvarande USDT-par, medan demokontots exekveringsmarknad är BTC-EUR. En godkänd kandidat kräver därför även korrekt instrument- och valutakoppling innan detta konto kan användas. Kontots befintliga exponering ingår i ordinarie riskgränser.</p>
+    <p>ELIGIBLE är inget orderlöfte. I demoläget kopplas verifierad native Bitcoin till kontots BTC-EUR-marknad: LIMIT-pris i EUR, storlek enligt börsens lotstorlek och ordervärde omräknat till SEK. Andra tillgångar eller saknad identitet blockeras. Färska börskurser och godkända forskningsunderlag krävs fortfarande. Kontots befintliga exponering ingår i ordinarie riskgränser.</p>
     <p>Experimentets affärer räknas inte som bevis för denna kedja eller som validerad strategiprestanda.</p>
   </article>;
 }

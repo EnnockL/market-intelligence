@@ -13,11 +13,17 @@ export function mapDemoProposal(input: ProposalCandidateInput, candidate: Return
     requirements: [...candidate.requirements,{code:"DEMO_MARKET_EXECUTION",status:"UNKNOWN" as const,observedValue:reason,requiredValue:"CURRENT_ACCOUNT_MARKET",blockerCode:reason}],
     resultHash: deterministicDigest({ inputHash:candidate.resultHash, reason }) });
   if (!snapshot || !verifyAccountLedgerV2Snapshot(snapshot) || snapshot.status !== "KNOWN") return fail("DEMO_ACCOUNT_MARKET_UNKNOWN");
+  // This rollout supports native Bitcoin only. A token sharing its ticker must
+  // never inherit the account's BTC market or its risk evidence.
+  if (input.assetExternalId!=="bitcoin" || input.assetMetadata?.nativeAsset!==true
+    || input.assetMetadata?.chain!=="bitcoin" || input.assetMetadata?.executionInstrument!=="BTC-EUR")
+    return fail("DEMO_ASSET_IDENTITY_UNVERIFIED");
   const e=snapshot.demoReconciliation, m=e?.market;
   if (!e || !m || input.assetKind!=="crypto" || input.symbol.toUpperCase()!==m.baseCurrency
+    || e.instrumentId!==input.assetMetadata.executionInstrument
     || e.instrumentId!==`${m.baseCurrency}-${m.quoteCurrency}` || e.quoteCurrency!==m.quoteCurrency) return fail("DEMO_INSTRUMENT_NOT_BOUND");
   const age=Date.parse(input.cutoffAt)-Date.parse(m.observedAt);
-  if (!Number.isFinite(age) || age<0 || age>15000 || Date.parse(snapshot.cutoffAt)>Date.parse(input.cutoffAt)) return fail("DEMO_MARKET_STALE");
+  if (!Number.isFinite(age) || age<0 || age>15000 || !Number.isFinite(Date.parse(snapshot.cutoffAt)) || Date.parse(snapshot.cutoffAt)>Date.parse(input.cutoffAt)) return fail("DEMO_MARKET_STALE");
   if (![m.lotSize,m.minimumSize,m.tickSize,m.bid,m.ask,e.quoteSekRate].every(x=>Number.isFinite(x)&&x>0)
     || m.ask<m.bid || (m.ask-m.bid)/m.bid*10000>50 || !candidate.direction) return fail("DEMO_MARKET_RULES_UNKNOWN");
   const raw=candidate.direction==="BUY"?m.ask:m.bid;
@@ -26,9 +32,9 @@ export function mapDemoProposal(input: ProposalCandidateInput, candidate: Return
   const quantity=Math.floor(100/(price*e.quoteSekRate)/m.lotSize)*m.lotSize;
   const notional=quantity*price*e.quoteSekRate;
   if (!Number.isFinite(quantity) || quantity<m.minimumSize || notional<10 || notional>100.00000001) return fail("DEMO_LOT_SIZE_OUT_OF_RANGE");
-  const result={...candidate,policyVersion:"demo-market-proposal-v1",orderType:"LIMIT" as const,instrument:e.instrumentId,referencePrice:price,limitPrice:price,quantity,quoteAmountSek:notional,dataAgeMs:age,
+  const result={...candidate,policyVersion:"demo-market-proposal-v2",orderType:"LIMIT" as const,instrument:e.instrumentId,referencePrice:price,limitPrice:price,quantity,quoteAmountSek:notional,dataAgeMs:age,
     stopPrice:candidate.direction==="BUY"?price*.95:price*1.05,targetPrice:candidate.direction==="BUY"?price*1.1:price*.9,
-    evidenceRefs:[...candidate.evidenceRefs,`account-ledger:${snapshot.snapshotKey}`],
+    evidenceRefs:[...candidate.evidenceRefs,`account-ledger:${snapshot.snapshotKey}`,`venue-asset:${input.assetId}:bitcoin:BTC-EUR`],
     requirements:[...candidate.requirements,{code:"DEMO_MARKET_EXECUTION",status:"PASS" as const,observedValue:e.instrumentId,requiredValue:"CURRENT_ACCOUNT_MARKET",blockerCode:null}]};
   return {...result,resultHash:deterministicDigest(result)};
 }
