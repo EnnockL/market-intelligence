@@ -8,7 +8,7 @@ The v2 execution pipeline has run successfully through production cron. BTC-EUR
 5-minute candles are collecting. A prospective research window is registered from
 19 September through 19 October 2026. No eligible proposal or exchange order yet;
 existing inventory exceeds entry limits, and research approval is still required.
-All six balances are preserved. No need to repeat baseline registration or apply
+All six balances are preserved. Remaining background limitations: two wallet histories exceed the read budget, one forecast target is retrying a timeout, and AI explanations lack a key. No need to repeat baseline registration or apply
 already-recorded migrations. Read the current rollout document before continuing.
 
 

@@ -121,3 +121,19 @@ measured read); a real subsequent collector call succeeded. Seven actual local
 consumer integration checks passed before applying the index. Execution controls
 were unchanged. Transient failed scheduler runs remain visible and retry normally;
 a successful direct worker check is not relabeled as a successful scheduled run.
+
+## Observed completion checkpoint (15:32 UTC)
+
+Release `b54ffe9` is Vercel Ready and database CI succeeded; production has
+contiguous migrations 0001?0100. Automatic v2 execution completed again at 15:32
+with DEMO enabled, LIVE false and no submitted orders. All existing balances are
+retained. The planned prospective test has now begun collecting future evidence.
+
+The first scheduled wallet run using the fix saved all 10 enrichments with zero
+transaction failures and rebuilt 138 cycles. Two other wallet histories exceeded
+the bounded-read budget, so the overall job deliberately reports PARTIAL/FAILED
+and rotates for retry. Do not label these wallets verified or hide that status.
+One baseline-forecast target also recorded a statement timeout during rollout and
+is retrying. These are remaining background processing limitations, not an
+unknown demo account or permission to trade. AI explanations remain paused for a
+missing API key. No strategy has been promoted by this startup work.
