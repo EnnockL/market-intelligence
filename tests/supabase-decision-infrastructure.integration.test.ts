@@ -87,6 +87,26 @@ suite("Supabase decision infrastructure", () => {
     expect(duplicate.data).toHaveLength(0);
   });
 
+  it("registers bounded batches and eventually delivers the complete backlog", async () => {
+    const name = `bounded-${crypto.randomUUID()}`, type = `integration.${name}`;
+    const events = Array.from({ length: 3 }, (_, index) => ({
+      event_id: `${name}-${index}`, schema_version: 1, event_type: type, entity_type: "integration", entity_id: name,
+      occurred_at: "2000-01-01T00:00:00Z", observed_at: "2000-01-01T00:00:00Z", available_at: "2000-01-01T00:00:00Z",
+      provider: "integration-test", source_reference: `${name}-${index}`, data_quality: 100, payload: {}, payload_hash: "a".repeat(64),
+    }));
+    expect((await db.from("event_outbox").insert(events)).error).toBeNull();
+    const seen: string[] = [];
+    for (let index = 0; index < 3; index++) {
+      const claimed = await db.rpc("claim_outbox_events_for_consumer", { p_consumer_name: name, p_event_types: [type], p_worker_id: name, p_limit: 1 });
+      expect(claimed.error).toBeNull(); expect(claimed.data).toHaveLength(1);
+      seen.push(claimed.data[0].event_id);
+      const registered = await db.from("event_outbox_deliveries").select("event_id").eq("consumer_name", name);
+      expect(registered.error).toBeNull(); expect(registered.data).toHaveLength(index + 1);
+      expect((await db.rpc("complete_outbox_delivery", { p_consumer_name: name, p_event_id: seen.at(-1), p_worker_id: name })).data).toBe(true);
+    }
+    expect(new Set(seen).size).toBe(3);
+  });
+
   it("enforces evidence cutoff and immutable revisions in PostgreSQL", async () => {
     const cutoff = new Date();
     const createdAt = new Date(cutoff.getTime() + 1_000).toISOString();

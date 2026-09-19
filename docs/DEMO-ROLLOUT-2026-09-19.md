@@ -37,15 +37,40 @@ LIVE remains prohibited. Existing risk limits have not been increased.
 Validation before rollout: 988 unit tests, 58 real local Supabase integration tests,
 97-migration frontend-to-backend upgrade checks, TypeScript and production build.
 
-## Remaining operational work at this checkpoint
+## Activation and production checks
 
-Deploy the exact committed code, activate data jobs, configure the BTC-EUR source
-and a prospective strategy plan, inspect the two production statement-timeout jobs
-(market-regime and jackpot collector), verify pipeline diagnostics and restore the
-demo order switch only after checks. Existing holdings exceed the entry exposure/
-position limits; covered sales can reduce holdings, but new buys are not granted
-an automatic risk-limit exception. No exchange orders have been sent.
+- Release `67a7b8d` reached Vercel Ready on the production aliases. Database CI
+  passed for that exact revision. FX and prospective-evaluation jobs are enabled;
+  both have since completed through the production scheduler.
+- Created native Bitcoin asset `48736961-9507-462d-82b4-a48dd39344d7` and the
+  `okx-spot-btc-eur-5m` source. Initial two-day ingestion saved 575 confirmed bars.
+- Registered separate research definition `6fec6fa7-7bbe-419b-94bd-83a4f2ed7425`
+  and prospective plan `9917cf27-9194-4855-b858-082ca0c29199`, from
+  2026-09-19 15:30 UTC through 2026-10-19 15:30 UTC. UTC all-day session, EMA 9/20
+  and VWAP, 70 bps round-trip fee budget and 10 bps round-trip slippage budget.
+  The engine deducts that combined budget once per completed simulated trade.
+  This is a research hypothesis, not an approved strategy or an execution signal.
+- Executed the full v2 demo pipeline against production: account and risk KNOWN,
+  nine proposals evaluated and rejected, no eligible intents, no submitted orders,
+  no reconciliation mismatches, LIVE false.
+- Applied migration 0098 after local verification. Market-regime reads now use
+  500-asset batches and count all pages, avoiding the API's 1000-row cap. Consumer
+  registration only writes a bounded batch of missing deliveries each time.
+- Production market-regime run succeeded for both scopes. Crypto correctly remains
+  UNKNOWN due to low fresh coverage across the full catalog. Jackpot collector
+  successfully claimed and processed 54 events with zero failures after the fix.
+- Increased production SCHEDULER_BATCH_LIMIT from the default 1 to 5. This takes
+  effect on the next release and addresses observed queue delays; leases and the
+  existing 240-second invocation budget remain in force.
 
-Market data reference: [OKX API guide](https://www.okx.com/docs-v5/en/), public
-history-candles endpoint and account instrument metadata. Actual EUR metadata,
-account capture and public candle responses were also checked directly.
+Validation of the background fix: dedicated >1000-asset pagination test, nine
+real local Supabase integration checks (including bounded delivery and lease
+recovery), 98-migration upgrade checks, TypeScript and production build passed.
+
+Final rollout verification still needs the background-fix release Ready, a fresh
+account capture and restoration of the original demo order switch. Existing
+holdings exceed entry exposure/position limits; covered sales can reduce holdings,
+but new buys are not granted a risk-limit exception. AI explanations remain paused
+because their API key is not configured. No exchange orders have been sent.
+
+Market data reference: [OKX API guide](https://www.okx.com/docs-v5/en/).
