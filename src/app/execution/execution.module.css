@@ -4,6 +4,17 @@
   padding: 24px 38px 80px;
   color: #f4f5f4;
 }
+.trace {
+  margin: 20px;
+  padding: 20px;
+  border: 1px solid #343b37;
+  border-radius: 16px;
+  overflow-wrap: anywhere;
+}
+.trace dl { display: grid; gap: 8px; }
+.trace dt { color: #929895; }
+.trace dd { margin: 0 0 12px; }
+.trace li { margin-block: 8px; }
 .hero,
 .panel,
 .metrics {
