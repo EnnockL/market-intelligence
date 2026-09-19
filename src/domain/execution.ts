@@ -2,6 +2,8 @@ import { deterministicDigest } from "./events";
 
 export const EXECUTION_CONTRACT_VERSION = "execution-contract-v1";
 export const EXECUTION_SAFETY_POLICY_VERSION = "execution-safety-policy-v2";
+/** OKX client IDs allow at most 32 alphanumeric characters. */
+export function executionClientOrderId(intentKey:string){return `mi${deterministicDigest(intentKey).slice(0,30)}`;}
 export type ExecutionMode = "SHADOW" | "DEMO";
 export type ExecutionState = "PROPOSED"|"SAFETY_PASSED"|"BLOCKED"|"SUBMITTING"|"SUBMITTED"|"ACKNOWLEDGED"|"PARTIALLY_FILLED"|"FILLED"|"CANCELLED"|"REJECTED"|"EXPIRED"|"RECONCILIATION_REQUIRED"|"CLOSED"|"MANUAL_INTERVENTION";
 export type RequirementStatus = "PASS"|"FAIL"|"UNKNOWN";

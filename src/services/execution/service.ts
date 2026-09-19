@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { assertExecutionTransition,createExecutionIntent,evaluateExecutionSafety,type ExecutionIntentInput,type ExecutionLimits,type SafetyContext,type ExecutionState } from "@/domain/execution";
+import { executionClientOrderId,assertExecutionTransition,createExecutionIntent,evaluateExecutionSafety,type ExecutionIntentInput,type ExecutionLimits,type SafetyContext,type ExecutionState } from "@/domain/execution";
 import { deterministicDigest } from "@/domain/events";
 import type { ExecutionProvider,ProviderOrder } from "./provider";
 import { checkQueuedExecution, type QueuedExecutionOrder } from "./submission-guard";
@@ -20,7 +20,7 @@ export class ExecutionService{
     const source=await this.db.from("execution_intents").select("strategy_attribution_id").eq("id",intentId).single();if(source.error)throw source.error;
     const accountKey=this.provider.mode==="SHADOW"?"shadow-primary":`${this.provider.name}-primary`;
     const account=await this.db.from("execution_accounts").select("id").eq("account_key",accountKey).eq("provider",this.provider.name).eq("provider_environment",this.provider.mode).maybeSingle();if(account.error)throw account.error;
-    const row=await this.db.from("execution_orders").upsert({account_id:account.data?.id??null,intent_id:intentId,safety_evaluation_id:evaluationId,strategy_attribution_id:source.data.strategy_attribution_id,provider:this.provider.name,provider_environment:this.provider.mode,client_order_id:`ord_${deterministicDigest(intentKey).slice(0,28)}`,current_state:state},{onConflict:"intent_id",ignoreDuplicates:true}).select("id,current_state,created_at").maybeSingle();if(row.error)throw row.error;
+    const row=await this.db.from("execution_orders").upsert({account_id:account.data?.id??null,intent_id:intentId,safety_evaluation_id:evaluationId,strategy_attribution_id:source.data.strategy_attribution_id,provider:this.provider.name,provider_environment:this.provider.mode,client_order_id:executionClientOrderId(intentKey),current_state:state},{onConflict:"intent_id",ignoreDuplicates:true}).select("id,current_state,created_at").maybeSingle();if(row.error)throw row.error;
     if(!row.data){const existing=await this.db.from("execution_orders").select("id,current_state,created_at").eq("intent_id",intentId).single();if(existing.error)throw existing.error;return existing.data}
     const eventKey=deterministicDigest({orderId:row.data.id,from:"PROPOSED",to:state,reason:"INITIAL_SAFETY_EVALUATION"}),event=await this.db.from("execution_order_events").upsert({event_key:eventKey,order_id:row.data.id,previous_state:"PROPOSED",next_state:state,reason:"INITIAL_SAFETY_EVALUATION",payload:{},occurred_at:row.data.created_at,available_at:new Date().toISOString()},{onConflict:"event_key",ignoreDuplicates:true});if(event.error)throw event.error;return row.data;
   }

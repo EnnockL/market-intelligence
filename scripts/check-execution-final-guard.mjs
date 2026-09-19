@@ -1,3 +1,4 @@
+import { checkDemoTrialGuard } from "./check-demo-trial-guard.mjs";
 /** Memory-only PostgreSQL helper, called by check-data-value-migrations.mjs.
  * No environment files, provider clients, orders or remote connections.
  */
@@ -58,7 +59,7 @@ export async function checkExecutionFinalGuard(db) {
     await db.query(`insert into public.account_state_observations(id,observation_key,account_id,provider,provider_environment,balances,positions,data_status,observed_at,available_at,payload_hash)
       values($1,$2,$3,$4,$5,'[]','[]',$6,$7,$7,'fixture')`, [ids.observation, `guard-${ids.observation}`, account.id, provider, mode, mode === "SHADOW" ? "UNKNOWN" : "KNOWN", cutoff]);
     await db.query(`insert into public.execution_intents(id,intent_key,contract_version,source_type,source_id,asset_id,instrument_id,side,order_type,quote_amount_sek,quantity,limit_price,stop_price,target_price,max_slippage_bps,information_cutoff_at,available_at,expires_at,evidence_refs,payload_hash)
-      values($1,$2,'execution-contract-v1','fixture','fixture',$3,'BTC-USDT','BUY','LIMIT',100,1,100,90,110,25,$4,$4,clock_timestamp()+interval '1 minute','[]','fixture')`, [ids.intent, `guard-${ids.intent}`, asset, cutoff]);
+      values($1,$2,'execution-contract-v1',$5,$6,$3,$7,$8,'LIMIT',$9,1,100,90,110,25,$4,$4,clock_timestamp()+interval '1 minute','[]','fixture')`, [ids.intent, `guard-${ids.intent}`, asset, cutoff, options.sourceType??"fixture",options.sourceId??"fixture",options.instrument??"BTC-USDT",options.side??"BUY",options.notional??100]);
     await db.query(`insert into public.execution_safety_evaluations(id,evaluation_key,intent_id,policy_version,decision,requirements,context,limits,result_hash,information_cutoff_at,available_at)
       values($1,$2,$3,'execution-safety-policy-v2','PASSED','[{"status":"PASS"}]','{}','{}','fixture',$4,$4)`, [ids.safety, `guard-${ids.safety}`, ids.intent, cutoff]);
     await db.query(`insert into public.execution_orders(id,intent_id,safety_evaluation_id,provider,provider_environment,client_order_id,current_state,account_id,reservation_fee_buffer_sek)
@@ -173,6 +174,7 @@ export async function checkExecutionFinalGuard(db) {
   await db.query("update public.execution_orders set reservation_fee_buffer_sek=null where id=$1", [feeBuffer.order]);
   assert.equal((await db.query("select open_quantity,average_cost_sek from public.risk_ledger_snapshots where id=$1", [feeBuffer.risk])).rows[0].open_quantity, null, "v2 does not require a meaningless cross-instrument quantity scalar");
 
+  await checkDemoTrialGuard(db,{fixture,authorize,asset});
   console.log("Final execution RPC: private roles, single claim, kill/new-orders, revisions, account linkage, v2 payload/identity/UNKNOWN guards, economic freshness, nullable legacy scalars and fee-buffer constraints passed.");
   } finally {
     await db.exec("reset role");

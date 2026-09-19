@@ -22,7 +22,7 @@ export async function ExecutionReadiness({ db, control }: { db: SupabaseClient; 
   const timestamp = (value?: string) => value ? new Date(value).toLocaleString("sv-SE", { timeZone: "Europe/Stockholm" }) : "saknas";
   const unavailable = accounts.error || plans.error || pending.error || risk?.error || runtime?.error || candle?.error;
   return <article className={styles.panel}>
-    <header><div><small>DRIFT OCH HANDELSSPÄRRAR</small><h2>Vad återstår innan en order?</h2></div><span>{unavailable ? "STATUS OFULLSTÄNDIG" : "SENAST REGISTRERAT"}</span></header>
+    <header><div><small>DRIFT OCH HANDELSSPÄRRAR</small><h2>Ordinarie orderflöde</h2></div><span>{unavailable ? "STATUS OFULLSTÄNDIG" : "SENAST REGISTRERAT"}</span></header>
     <p>{control?.mode === "DEMO" && control?.new_orders_enabled && !control?.kill_switch ? "Demohandel är aktiverad. Varje order prövas mot signal, konto och riskgränser." : "Orderflödet är inte aktiverat för demohandel."}</p>
     <p><strong>Konto: {account?.account_key ?? "kan inte fastställas entydigt"}.</strong> {entryRiskSummary({ status: risk?.data?.status, openPositions: ledger?.openPositions, exposureSek: exposure, maxPositions: limits.maxOpenPositions, maxExposureSek: limits.maxTotalExposureSek })}</p>
     <p>Riskbild från {timestamp(risk?.data?.information_cutoff_at)} (Stockholm). Gränser: {String(limits.maxOpenPositions ?? "okänt")} positioner, {String(limits.maxTotalExposureSek ?? "okänt")} SEK exponering. Färska konto- och marknadsuppgifter kontrolleras igen inför varje order.</p>

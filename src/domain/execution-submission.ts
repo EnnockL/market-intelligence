@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { demoTrialRisk, type DemoTrialEvidence } from "./demo-trial";
 import { createExecutionIntent, evaluateExecutionSafety, EXECUTION_SAFETY_POLICY_VERSION, type ExecutionIntentInput, type SafetyContext } from "./execution";
 import { ACCOUNT_LEDGER_V2_VERSION, riskContextFromAccountLedgerV2, verifyAccountLedgerV2Snapshot } from "./account-ledger-v2";
 
@@ -31,6 +32,7 @@ export interface SubmissionEvidence {
   provider: { name: string; mode: "SHADOW" | "DEMO" };
   control: unknown; account: unknown; risk: unknown; observation: unknown; safety: unknown; health: unknown;
   checkedAt: string;
+  trial?: DemoTrialEvidence;
 }
 
 /** Re-evaluate queued approval; missing/malformed/UNKNOWN inputs never inherit PASS. */
@@ -55,8 +57,17 @@ export function evaluateSubmissionEvidence(input: SubmissionEvidence) {
     || Date.parse(ledger.economicCutoffAt) !== Date.parse(risk.data.economic_cutoff_at)
     || risk.data.cash_sek !== ledger.cashSek || risk.data.open_positions !== ledger.openPositions
     || risk.data.realized_pnl_sek !== ledger.realizedPnlSek || risk.data.reserved_exposure_sek !== ledger.reservedBuySek) return deny("FINAL_LEDGER_PAYLOAD_MISMATCH");
-  const ledgerContext = riskContextFromAccountLedgerV2(ledger, input.order.id);
+  let ledgerContext = riskContextFromAccountLedgerV2(ledger, input.order.id);
   if (ledgerContext.status !== "KNOWN") return deny("FINAL_RISK_UNKNOWN");
+  if (input.intent.sourceType === "demo_trial") {
+    const trial=input.trial;
+    if (input.provider.mode!=="DEMO" || input.provider.name!=="okx-demo" || !trial || trial.actionId!==input.intent.sourceId
+      || trial.riskSnapshotId!==risk.data.id || input.intent.strategyAttributionId || trial.instrumentId!==input.intent.instrumentId
+      || (input.intent.side==="BUY" && Date.parse(trial.endsAt)<=Date.parse(input.checkedAt))) return deny("FINAL_DEMO_TRIAL_SCOPE");
+    const scoped=demoTrialRisk(trial,ledger,input.order.id);
+    if(!scoped)return deny("FINAL_DEMO_TRIAL_EVIDENCE");
+    ledgerContext=scoped;
+  } else if(input.trial) return deny("FINAL_DEMO_TRIAL_SCOPE");
   if (!observation.success || observation.data.account_id !== account.data.id || observation.data.provider !== input.provider.name || observation.data.provider_environment !== input.provider.mode) return deny("FINAL_ACCOUNT_OBSERVATION_UNKNOWN");
   // Shadow has no external balance by design. It still requires an ACTIVE,
   // revisioned account and a fresh KNOWN declared-capital risk snapshot.
@@ -100,5 +111,6 @@ export function evaluateSubmissionEvidence(input: SubmissionEvidence) {
     checkedAt: input.checkedAt, controlRevision: control.data.revision, accountId: account.data.id, accountRevision: account.data.revision,
     riskSnapshotId: risk.data.id, accountObservationId: observation.data.id, safetyEvaluationId: safety.data.id,
     dataAgeMs: context.dataAgeMs!,
+    ...(input.trial ? {trialSnapshotId:input.trial.snapshotId} : {}),
   };
 }

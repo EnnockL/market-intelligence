@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { loadDemoTrialEvidence, trialForAction } from "./demo-trial-evidence";
 import type { ExecutionIntentInput } from "@/domain/execution";
 import { evaluateSubmissionEvidence } from "@/domain/execution-submission";
 import type { ExecutionProvider } from "./provider";
@@ -24,7 +25,7 @@ export async function checkQueuedExecution(db: SupabaseClient, provider: Executi
   if (order.account_id !== account.data.id) return { decision: "BLOCKED" as const, reason: "FINAL_ACCOUNT_MISMATCH" };
   const cutoffAt = new Date().toISOString();
   const [risk, observation] = await Promise.all([
-    db.from("risk_ledger_snapshots").select("id,account_id,ledger_version,ledger_payload,status,cash_sek,open_positions,realized_pnl_sek,daily_realized_pnl_sek,reserved_exposure_sek,gross_exposure_sek,available_cash_sek,economic_cutoff_at,information_cutoff_at,available_at,unknown_reasons").eq("account_id", account.data.id).lte("available_at", cutoffAt).order("information_cutoff_at", { ascending: false }).order("id", { ascending: false }).limit(1).maybeSingle(),
+    db.from("risk_ledger_snapshots").select("id,account_id,ledger_version,ledger_payload,status,cash_sek,open_positions,realized_pnl_sek,daily_realized_pnl_sek,reserved_exposure_sek,gross_exposure_sek,available_cash_sek,economic_cutoff_at,information_cutoff_at,available_at,unknown_reasons,source_fill_ids").eq("account_id", account.data.id).lte("available_at", cutoffAt).order("information_cutoff_at", { ascending: false }).order("id", { ascending: false }).limit(1).maybeSingle(),
     db.from("account_state_observations").select("id,account_id,provider,provider_environment,data_status,observed_at,available_at").eq("account_id", account.data.id).lte("available_at", cutoffAt).order("observed_at", { ascending: false }).order("id", { ascending: false }).limit(1).maybeSingle(),
   ]);
   if (risk.error || observation.error) throw new Error("FINAL_GUARD_READ_FAILED");
@@ -50,7 +51,8 @@ export async function checkQueuedExecution(db: SupabaseClient, provider: Executi
     const available = riskContextFromAccountLedgerV2(payload, order.id);
     if (intent.side === "BUY" && (available.availableCashSek === null || available.availableCashSek < notional * (1 + evidence.feeRate))) return { decision: "BLOCKED" as const, reason: "FINAL_DEMO_FEE_BUFFER_REQUIRED" };
   }
-  return evaluateSubmissionEvidence({ order, intent: persistedExecutionIntent(rawIntent), provider, control: control.data, account: account.data, risk: risk.data, observation: observation.data, safety: safety.data, health, checkedAt: new Date().toISOString() });
+  const trial = rawIntent.source_type === "demo_trial" ? await loadDemoTrialEvidence(db, await trialForAction(db,rawIntent.source_id), risk.data, rawIntent.source_id) : undefined;
+  return evaluateSubmissionEvidence({ order, intent: persistedExecutionIntent(rawIntent), provider, control: control.data, account: account.data, risk: risk.data, observation: observation.data, safety: safety.data, health, trial, checkedAt: new Date().toISOString() });
 }
 
 export function persistedExecutionIntent(value: Record<string, any>): ExecutionIntentInput {
