@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ExecutionIntentInput } from "@/domain/execution";
 import { evaluateSubmissionEvidence } from "@/domain/execution-submission";
 import type { ExecutionProvider } from "./provider";
+import { riskContextFromAccountLedgerV2, verifyAccountLedgerV2Snapshot } from "@/domain/account-ledger-v2";
 
 export interface QueuedExecutionOrder {
   id: string; account_id: string | null; intent_id: string; safety_evaluation_id: string; provider: string; provider_environment: string;
@@ -13,7 +14,7 @@ export async function checkQueuedExecution(db: SupabaseClient, provider: Executi
   const accountKey = provider.mode === "SHADOW" ? "shadow-primary" : `${provider.name}-primary`;
   const [control, account, safety] = await Promise.all([
     db.from("execution_controls").select("control_key,revision,mode,provider,kill_switch,new_orders_enabled,live_execution_enabled,provider_status,limits").eq("control_key", "global").maybeSingle(),
-    db.from("execution_accounts").select("id,revision,account_key,provider,provider_environment,status").eq("account_key", accountKey).maybeSingle(),
+    db.from("execution_accounts").select("id,revision,account_key,provider,provider_environment,status,provider_account_id,demo_baseline").eq("account_key", accountKey).maybeSingle(),
     db.from("execution_safety_evaluations").select("id,intent_id,decision,policy_version,context,information_cutoff_at,available_at").eq("id", order.safety_evaluation_id).maybeSingle(),
   ]);
   if ([control, account, safety].some(result => result.error)) throw new Error("FINAL_GUARD_READ_FAILED");
@@ -32,6 +33,23 @@ export async function checkQueuedExecution(db: SupabaseClient, provider: Executi
   let health: Awaited<ReturnType<ExecutionProvider["health"]>>;
   try { health = await provider.health(); }
   catch { return { decision: "BLOCKED" as const, reason: "FINAL_PROVIDER_HEALTH_UNKNOWN" }; }
+  if (provider.mode === "DEMO") {
+    const payload = risk.data?.ledger_payload;
+    if (!account.data.provider_account_id || health.externalAccountId !== account.data.provider_account_id || !verifyAccountLedgerV2Snapshot(payload)
+      || payload.demoReconciliation?.externalAccountId !== account.data.provider_account_id) return { decision: "BLOCKED" as const, reason: "FINAL_DEMO_ACCOUNT_NOT_RECONCILED" };
+    const evidence = payload.demoReconciliation!, intent = persistedExecutionIntent(rawIntent);
+    if (evidence.instrumentId !== intent.instrumentId || intent.orderType !== "LIMIT" || !(intent.quantity! > 0) || !(intent.limitPrice! > 0)
+      || !Number.isFinite(evidence.quoteSekRate) || evidence.quoteSekRate <= 0 || !Number.isFinite(evidence.feeRate) || evidence.feeRate < 0) return { decision: "BLOCKED" as const, reason: "FINAL_DEMO_INSTRUMENT_OR_PRICE_UNKNOWN" };
+    const notional = intent.quantity! * intent.limitPrice! * evidence.quoteSekRate;
+    if (!Number.isFinite(notional) || Math.abs(notional - intent.quoteAmountSek) > Math.max(0.01, notional * 0.0001)) return { decision: "BLOCKED" as const, reason: "FINAL_DEMO_NOTIONAL_MISMATCH" };
+    const market=evidence.market;
+    const multiple=(value:number,step:number)=>Number.isFinite(step)&&step>0&&Math.abs(value/step-Math.round(value/step))<1e-7;
+    if (!market || market.quoteCurrency!==evidence.quoteCurrency || `${market.baseCurrency}-${market.quoteCurrency}`!==intent.instrumentId
+      || !multiple(intent.quantity!,market.lotSize) || !multiple(intent.limitPrice!,market.tickSize) || intent.quantity!<market.minimumSize)
+      return {decision:"BLOCKED" as const,reason:"FINAL_DEMO_VENUE_RULES_UNKNOWN"};
+    const available = riskContextFromAccountLedgerV2(payload, order.id);
+    if (intent.side === "BUY" && (available.availableCashSek === null || available.availableCashSek < notional * (1 + evidence.feeRate))) return { decision: "BLOCKED" as const, reason: "FINAL_DEMO_FEE_BUFFER_REQUIRED" };
+  }
   return evaluateSubmissionEvidence({ order, intent: persistedExecutionIntent(rawIntent), provider, control: control.data, account: account.data, risk: risk.data, observation: observation.data, safety: safety.data, health, checkedAt: new Date().toISOString() });
 }
 

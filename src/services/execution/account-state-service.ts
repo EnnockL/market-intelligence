@@ -4,6 +4,7 @@ import { rebuildAccountLedgerV2 } from "@/domain/account-ledger-v2";
 import { readBoundedPages } from "@/repositories/bounded-read";
 import type { ExecutionProvider } from "./provider";
 import { ExecutionFillSyncService } from "./fill-sync-service";
+import { DemoAccountService } from "./demo-account-service";
 import { finiteNumber, normalizeLedgerFill, remainingOrderReservation } from "./ledger-evidence";
 
 const pendingStates = ["SAFETY_PASSED", "SUBMITTING", "SUBMITTED", "ACKNOWLEDGED", "PARTIALLY_FILLED", "RECONCILIATION_REQUIRED"];
@@ -20,6 +21,7 @@ export class AccountStateService {
     const account = accountRow.data, reasons: string[] = [];
     const baselineAt = account.ledger_baseline_at ?? null;
     if (account.provider !== this.provider.name || account.provider_environment !== this.provider.mode) throw new Error("ACCOUNT_PROVIDER_MISMATCH");
+    if (!requestedCutoffAt && this.provider.mode === "DEMO" && account.demo_baseline) return new DemoAccountService(this.db, this.provider).capture(account);
     const fillCoverage = async (cutoff: string) => {
       if (!baselineAt) return null;
       const result = await this.db.rpc("execution_fill_coverage_v1", { p_account_id: account.id, p_provider: this.provider.name, p_environment: this.provider.mode, p_baseline_at: baselineAt, p_cutoff_at: cutoff });

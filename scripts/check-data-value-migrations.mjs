@@ -1,3 +1,4 @@
+import { checkProspectiveStrategyDatasets } from "./check-prospective-strategy-datasets.mjs";
 /**
  * Isolated schema/RPC smoke test. Uses memory-only PostgreSQL, never application
  * env files, Supabase credentials or a remote database. Optional test dependency:
@@ -17,6 +18,7 @@ import { checkExecutionFillProvenance } from "./check-execution-fill-provenance.
 import { checkFrontendPaperSnapshot } from "./check-frontend-paper-snapshot.mjs";
 import { checkWalletEvidenceWindow } from "./check-wallet-evidence-window.mjs";
 import { checkExecutionReconciliation } from "./check-execution-reconciliation.mjs";
+import { checkDemoAccountReconciliation } from "./check-demo-account-reconciliation.mjs";
 
 const modulePath = process.argv[2];
 const { PGlite } = await import(modulePath ? pathToFileURL(join(modulePath, "dist/index.js")).href : "@electric-sql/pglite");
@@ -51,7 +53,11 @@ try {
     }
     catch (error) { throw new Error(`${file}: ${error.code} ${error.message}`); }
   }
-  if (upgrade) assert.deepEqual(await controls(), releaseControls, "backend upgrades must not change trading mode, limits, account status or enable jobs");
+  if (upgrade) {
+    const after=await controls(), oldKeys=new Set(releaseControls.jobs.map(x=>x.job_key));
+    assert.ok(after.jobs.filter(x=>!oldKeys.has(x.job_key)).every(x=>x.enabled===false),"new jobs must start disabled");
+    assert.deepEqual({...after,jobs:after.jobs.filter(x=>oldKeys.has(x.job_key))},releaseControls,"backend upgrades must preserve existing trading controls, accounts and job switches");
+  }
   console.log(`Applied ${files.length} migrations to disposable PostgreSQL (${upgrade ? "non-contiguous frontend upgrade" : "fresh database"}).`);
 
   for (const role of ["anon", "authenticated"]) {
@@ -182,7 +188,9 @@ try {
   console.log("Passed: private roles, service-role RPC access, >1000-row wallet fairness, retry rotation, new-wallet priority, exact time-window counts and typed view.");
   console.log("Passed: atomic baseline rollback, PIT rejection, complete-bundle idempotency, identity conflicts and explicit legacy-partial failure.");
   await checkIntelligenceProvenance(db);
+    await checkProspectiveStrategyDatasets(db);
   await runDataGapRevisitChecks(db);
+  await checkDemoAccountReconciliation(db);
   await checkExecutionFinalGuard(db);
   await checkExecutionFillProvenance(db);
   await checkFrontendPaperSnapshot(db);

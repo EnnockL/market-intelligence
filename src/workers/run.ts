@@ -1,3 +1,5 @@
+import { StrategyPatternLabService } from "@/services/strategy-pattern-lab/service";
+import { StrategyIntelligenceService } from "@/services/strategy-intelligence/service";
 import { getWorkerEnv } from "@/lib/env";
 import { createServiceClient } from "@/lib/supabase/server";
 import { IngestionRepository } from "@/repositories/ingestion-repository";
@@ -58,6 +60,8 @@ import { OpenAIResponsesProvider } from "@/services/ai/openai-provider";
 import { runExecution } from "./execution";
 import { runTradeEligibility } from "./trade-eligibility";
 import { runAccountState } from "./account-state";
+import { DemoAccountService } from "@/services/execution/demo-account-service";
+import { createExecutionProvider } from "./execution";
 import { runExecutionBridge } from "./execution-bridge";
 import { runTradeProposalProducer } from "./trade-proposal-producer";
 import { runExecutionPipeline } from "./execution-pipeline";
@@ -121,6 +125,9 @@ async function main() {
       "execution",
       "trade-eligibility",
       "account-state",
+      "demo-account-baseline",
+      "strategy-oos-register",
+      "strategy-oos-evaluate",
       "execution-bridge",
       "trade-proposal-producer",
       "execution-pipeline",
@@ -136,7 +143,25 @@ async function main() {
     env.NEXT_PUBLIC_SUPABASE_URL,
     env.SUPABASE_SERVICE_ROLE_KEY,
   );
+  if (job === "strategy-oos-register") {
+    const [definitionId, assetId, provider, startsAt, endsAt] = process.argv.slice(3);
+    if (!endsAt) throw new Error("Usage: strategy-oos-register definitionId assetId provider startsAt endsAt");
+    const result = await db.rpc("register_strategy_dataset", { p_definition_id: definitionId, p_asset_id: assetId, p_provider: provider, p_starts_at: startsAt, p_ends_at: endsAt });
+    if (result.error) throw result.error;
+    console.log({ planId: result.data, ordersSent: 0 }); return;
+  }
+  if (job === "strategy-oos-evaluate") {
+    if (!process.argv[3]) throw new Error("Usage: strategy-oos-evaluate planId");
+    const evaluation = await new StrategyPatternLabService(db).runFrozen(process.argv[3]);
+    const research = await new StrategyIntelligenceService(db).researchEvaluation(evaluation.runId);
+    console.log({ evaluationRunId: evaluation.runId, snapshotId: research.snapshotId, status: research.snapshot.status, ordersSent: 0 }); return;
+  }
   const repository = new IngestionRepository(db);
+  if (job === "demo-account-baseline") {
+    if (env.EXECUTION_MODE !== "DEMO" || process.argv[4] !== "--prepare-read-only") throw new Error("Usage: demo-account-baseline BTC-EUR --prepare-read-only (DEMO mode required)");
+    console.log(await new DemoAccountService(db, createExecutionProvider("DEMO", env)).prepareBaseline(process.argv[3]));
+    return;
+  }
   const stockSymbols = env.STOCK_SYMBOLS.split(",")
     .map((value) => value.trim())
     .filter(Boolean);

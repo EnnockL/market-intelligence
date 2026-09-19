@@ -85,6 +85,7 @@ export function evaluateSubmissionEvidence(input: SubmissionEvidence) {
     ...safety.data.context, mode: input.provider.mode, killSwitch: control.data.kill_switch,
     newOrdersEnabled: control.data.new_orders_enabled, liveExecutionEnabled: control.data.live_execution_enabled,
     providerStatus: health.data.status, credentialsValid: health.data.credentialsValid, tradePermission: health.data.tradePermission, withdrawPermission: health.data.withdrawPermission,
+    availableSellQuantity: ledgerContext.availableSellQuantity?.[intent.instrumentId] ?? null,
     openPositions: ledgerContext.openPositions, dailyLossSek: ledgerContext.dailyLossSek,
     totalExposureSek: ledgerContext.totalExposureSek, availableCashSek: ledgerContext.availableCashSek,
     dataAgeMs: safety.data.context.dataAgeMs === null ? null : safety.data.context.dataAgeMs + now - cutoff,

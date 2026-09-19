@@ -45,6 +45,11 @@ export interface PendingOrderV2 {
 }
 
 export interface AccountLedgerV2Input {
+  /** Market-value reference at an observed opening boundary, never historical purchase cost. */
+  openingInventory?: Array<{ instrumentId: string; quantity: number; referencePriceSek: number }>;
+  /** Current cash independently reconstructed in native currency and matched to provider bills/balances. */
+  cashReconciliation?: { cashSek: number; evidenceHash: string };
+  demoReconciliation?: { externalAccountId: string; instrumentId: string; quoteCurrency: string; quoteSekRate: number; feeRate: number; evidenceHash: string; market?: import("./demo-market-proposal").DemoExecutionMarket };
   accountId: string;
   baselineAt: string | null;
   openingCashSek: number | null;
@@ -78,6 +83,8 @@ export interface AccountLedgerPositionV2 {
 }
 
 export interface AccountLedgerSnapshotV2 {
+  pnlScope?: "SINCE_OBSERVED_BASELINE_NOT_HISTORICAL_COST";
+  demoReconciliation?: AccountLedgerV2Input["demoReconciliation"];
   version: typeof ACCOUNT_LEDGER_V2_VERSION;
   accountId: string;
   baselineAt: string | null;
@@ -129,6 +136,7 @@ export function rebuildAccountLedgerV2(input: AccountLedgerV2Input): AccountLedg
   if (!Number.isFinite(dayStart) || dayStart > economicCutoff) ledgerUnknown("DAILY_WINDOW_INVALID");
   if (input.openingCashStatus !== "DECLARED" || !nonNegative(input.openingCashSek)) ledgerUnknown("OPENING_CASH_NOT_DECLARED");
   if (input.historyComplete !== true) ledgerUnknown("FILL_HISTORY_INCOMPLETE");
+  if (input.cashReconciliation && (!nonNegative(input.cashReconciliation.cashSek) || !/^[a-f0-9]{64}$/.test(input.cashReconciliation.evidenceHash))) ledgerUnknown("CASH_RECONCILIATION_INVALID");
   if (!finite(maxMarkAge) || maxMarkAge < 0) reasons.add("MARK_MAX_AGE_INVALID");
   if (!Array.isArray(input.fills)) ledgerUnknown("FILLS_UNAVAILABLE");
   if (!Array.isArray(input.marks)) reasons.add("MARKS_UNAVAILABLE");
@@ -144,6 +152,15 @@ export function rebuildAccountLedgerV2(input: AccountLedgerV2Input): AccountLedg
     if (!inventory.has(instrument)) inventory.set(instrument, { quantity: 0, cost: 0, realized: 0 });
     return inventory.get(instrument)!;
   };
+  const openingIds = new Set<string>();
+  for (const item of input.openingInventory ?? []) {
+    if (!identifier(item.instrumentId) || !positive(item.quantity) || !positive(item.referencePriceSek)
+      || openingIds.has(item.instrumentId) || !finite(item.quantity * item.referencePriceSek)) {
+      ledgerUnknown("OPENING_INVENTORY_INVALID"); continue;
+    }
+    openingIds.add(item.instrumentId);
+    inventory.set(item.instrumentId, { quantity: item.quantity, cost: item.quantity * item.referencePriceSek, realized: 0 });
+  }
   const seenFills = new Map<string, string>(), fillSidesAtTime = new Map<string, string>();
   for (const fill of fills) {
     if (!fill || !identifier(fill.fillId) || !identifier(fill.instrumentId)) { ledgerUnknown("FILL_IDENTITY_INVALID"); continue; }
@@ -195,8 +212,11 @@ export function rebuildAccountLedgerV2(input: AccountLedgerV2Input): AccountLedg
     fees += fee; grossFees += Math.max(fee, 0); rebates += Math.max(-fee, 0);
     if (timestamp(fill.occurredAt) >= dayStart) { dailyRealized += pnl; dailyFees += fee; }
     if (![cash, item.quantity, item.cost, item.realized, realized, dailyRealized, fees, grossFees, rebates, dailyFees].every(finite)) { ledgerUnknown("LEDGER_ARITHMETIC_OVERFLOW"); break; }
-    if (cash < -quantityTolerance(input.openingCashSek!, gross)) { ledgerUnknown(`CASH_DEFICIT:${fill.fillId}`); break; }
+    if (!input.cashReconciliation && cash < -quantityTolerance(input.openingCashSek!, gross)) { ledgerUnknown(`CASH_DEFICIT:${fill.fillId}`); break; }
   }
+  // Native-currency reconciliation owns spending power; historical SEK fill
+  // conversions continue to own cost basis/PnL. Funding is never trading profit.
+  if (input.cashReconciliation && !ledgerReasons.size) cash = input.cashReconciliation.cashSek;
 
   let reservedBuy = 0;
   const reservedSell = new Map<string, number>(), seenOrders = new Map<string, string>();
@@ -258,6 +278,8 @@ export function rebuildAccountLedgerV2(input: AccountLedgerV2Input): AccountLedg
   if (availableCash !== null && availableCash < -quantityTolerance(cash, reservedBuy)) reasons.add("BUY_RESERVATIONS_EXCEED_CASH");
   const inputHash = deterministicDigest(hashable({ ...input, fills: sortedInput(fills), marks: sortedInput(marks), pendingOrders: input.pendingOrders === null ? null : sortedInput(pending), markMaxAgeMs: maxMarkAge, excludeOrderId: input.excludeOrderId ?? null }));
   const body: Omit<AccountLedgerSnapshotV2, "snapshotKey" | "resultHash"> = {
+    ...(input.openingInventory ? { pnlScope: "SINCE_OBSERVED_BASELINE_NOT_HISTORICAL_COST" as const } : {}),
+    ...(input.demoReconciliation ? { demoReconciliation: input.demoReconciliation } : {}),
     version: ACCOUNT_LEDGER_V2_VERSION, accountId: input.accountId, baselineAt: input.baselineAt,
     cutoffAt: input.cutoffAt, economicCutoffAt, dailyWindowStartAt: input.dailyWindowStartAt,
     status: reasons.size ? "UNKNOWN" as const : "KNOWN" as const,

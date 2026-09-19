@@ -1,13 +1,13 @@
 import { deterministicDigest } from "./events";
 
 export const EXECUTION_CONTRACT_VERSION = "execution-contract-v1";
-export const EXECUTION_SAFETY_POLICY_VERSION = "execution-safety-policy-v1";
+export const EXECUTION_SAFETY_POLICY_VERSION = "execution-safety-policy-v2";
 export type ExecutionMode = "SHADOW" | "DEMO";
 export type ExecutionState = "PROPOSED"|"SAFETY_PASSED"|"BLOCKED"|"SUBMITTING"|"SUBMITTED"|"ACKNOWLEDGED"|"PARTIALLY_FILLED"|"FILLED"|"CANCELLED"|"REJECTED"|"EXPIRED"|"RECONCILIATION_REQUIRED"|"CLOSED"|"MANUAL_INTERVENTION";
 export type RequirementStatus = "PASS"|"FAIL"|"UNKNOWN";
 export interface ExecutionIntentInput { sourceType:string;sourceId:string;assetId:string;instrumentId:string;side:"BUY"|"SELL";orderType:"MARKET"|"LIMIT";quoteAmountSek:number;quantity:number|null;limitPrice:number|null;stopPrice:number|null;targetPrice:number|null;maxSlippageBps:number;informationCutoffAt:string;availableAt:string;expiresAt:string;evidenceRefs:string[];consensusVersion:string|null;forecastVersion:string|null;riskVersion:string|null;strategyAttributionId?:string|null; }
 export interface SafetyRequirement { code:string;status:RequirementStatus;observedValue:unknown;requiredValue:unknown;blockerCode:string|null; }
-export interface SafetyContext { mode:ExecutionMode;killSwitch:boolean;newOrdersEnabled:boolean;liveExecutionEnabled:boolean;providerStatus:"HEALTHY"|"DEGRADED"|"FAILED"|"UNKNOWN";credentialsValid:boolean|null;tradePermission:boolean|null;withdrawPermission:boolean|null;instrumentType:"SPOT"|"MARGIN"|"FUTURES"|"UNKNOWN";leverage:number|null;openPositions:number|null;dailyLossSek:number|null;totalExposureSek:number|null;availableCashSek:number|null;dataAgeMs:number|null;criticalSafety:"PASS"|"FAIL"|"UNKNOWN";liquidityStatus:"PASS"|"FAIL"|"UNKNOWN";riskStatus:"PASS"|"FAIL"|"UNKNOWN"; }
+export interface SafetyContext { availableSellQuantity?:number|null; mode:ExecutionMode;killSwitch:boolean;newOrdersEnabled:boolean;liveExecutionEnabled:boolean;providerStatus:"HEALTHY"|"DEGRADED"|"FAILED"|"UNKNOWN";credentialsValid:boolean|null;tradePermission:boolean|null;withdrawPermission:boolean|null;instrumentType:"SPOT"|"MARGIN"|"FUTURES"|"UNKNOWN";leverage:number|null;openPositions:number|null;dailyLossSek:number|null;totalExposureSek:number|null;availableCashSek:number|null;dataAgeMs:number|null;criticalSafety:"PASS"|"FAIL"|"UNKNOWN";liquidityStatus:"PASS"|"FAIL"|"UNKNOWN";riskStatus:"PASS"|"FAIL"|"UNKNOWN"; }
 export interface ExecutionLimits { minOrderSek:number;maxOrderSek:number;maxOpenPositions:number;maxDailyLossSek:number;maxTotalExposureSek:number;maxDataAgeMs:number;maxSlippageBps:number; }
 
 export function createExecutionIntent(input:ExecutionIntentInput){
@@ -18,6 +18,10 @@ export function createExecutionIntent(input:ExecutionIntentInput){
 }
 
 export function evaluateExecutionSafety(intent:ReturnType<typeof createExecutionIntent>,context:SafetyContext,limits:ExecutionLimits){
+  const held=context.availableSellQuantity;
+  const reducing=intent.side==="SELL" && context.instrumentType==="SPOT" && context.leverage===1
+    && typeof held==="number" && Number.isFinite(held) && held>=0
+    && typeof intent.quantity==="number" && Number.isFinite(intent.quantity) && intent.quantity>0 && intent.quantity<=held;
   const addedExposure=intent.side==="BUY"?intent.quoteAmountSek:0;
   const requirements:SafetyRequirement[]=[
     req("KILL_SWITCH",context.killSwitch?"FAIL":"PASS",context.killSwitch,false,"KILL_SWITCH_ACTIVE"),
@@ -29,9 +33,10 @@ export function evaluateExecutionSafety(intent:ReturnType<typeof createExecution
     boolReq("NO_WITHDRAW_PERMISSION",context.withdrawPermission,false,"WITHDRAW_PERMISSION_PRESENT_OR_UNKNOWN"),
     req("SPOT_ONLY",context.instrumentType==="UNKNOWN"?"UNKNOWN":context.instrumentType==="SPOT"?"PASS":"FAIL",context.instrumentType,"SPOT","NON_SPOT_INSTRUMENT"),
     req("NO_LEVERAGE",context.leverage===null?"UNKNOWN":context.leverage<=1?"PASS":"FAIL",context.leverage,"<= 1","LEVERAGE_NOT_ALLOWED"),
-    req("POSITION_LIMIT",context.openPositions===null?"UNKNOWN":context.openPositions<limits.maxOpenPositions?"PASS":"FAIL",context.openPositions,`< ${limits.maxOpenPositions}`,"MAX_OPEN_POSITIONS"),
-    req("DAILY_LOSS_LIMIT",context.dailyLossSek===null?"UNKNOWN":context.dailyLossSek<limits.maxDailyLossSek?"PASS":"FAIL",context.dailyLossSek,`< ${limits.maxDailyLossSek}`,"DAILY_LOSS_LIMIT"),
-    req("TOTAL_EXPOSURE_LIMIT",context.totalExposureSek===null?"UNKNOWN":context.totalExposureSek+addedExposure<=limits.maxTotalExposureSek?"PASS":"FAIL",context.totalExposureSek===null?null:context.totalExposureSek+addedExposure,`<= ${limits.maxTotalExposureSek}`,"TOTAL_EXPOSURE_LIMIT"),
+    req("POSITION_LIMIT",context.openPositions===null||!Number.isFinite(context.openPositions)||context.openPositions<0?"UNKNOWN":reducing?"PASS":context.openPositions<limits.maxOpenPositions?"PASS":"FAIL",context.openPositions,reducing?"VERIFIED_INVENTORY_REDUCTION":`< ${limits.maxOpenPositions}`,"MAX_OPEN_POSITIONS"),
+    req("DAILY_LOSS_LIMIT",context.dailyLossSek===null||!Number.isFinite(context.dailyLossSek)||context.dailyLossSek<0?"UNKNOWN":reducing?"PASS":context.dailyLossSek<limits.maxDailyLossSek?"PASS":"FAIL",context.dailyLossSek,reducing?"VERIFIED_INVENTORY_REDUCTION":`< ${limits.maxDailyLossSek}`,"DAILY_LOSS_LIMIT"),
+    req("TOTAL_EXPOSURE_LIMIT",context.totalExposureSek===null||!Number.isFinite(context.totalExposureSek)||context.totalExposureSek<0?"UNKNOWN":reducing?"PASS":context.totalExposureSek+addedExposure<=limits.maxTotalExposureSek?"PASS":"FAIL",context.totalExposureSek===null?null:context.totalExposureSek+addedExposure,reducing?"VERIFIED_INVENTORY_REDUCTION":`<= ${limits.maxTotalExposureSek}`,"TOTAL_EXPOSURE_LIMIT"),
+    req("SELL_INVENTORY",intent.side!=="SELL"?"PASS":held===null||held===undefined?"UNKNOWN":reducing?"PASS":"FAIL",held??null,intent.quantity,"SELL_QUANTITY_UNAVAILABLE"),
     req("AVAILABLE_CASH",intent.side==="SELL"?"PASS":context.availableCashSek===null?"UNKNOWN":context.availableCashSek>=intent.quoteAmountSek?"PASS":"FAIL",context.availableCashSek,intent.side==="SELL"?"NOT_APPLICABLE":`>= ${intent.quoteAmountSek}`,"INSUFFICIENT_OR_UNKNOWN_CASH"),
     req("ORDER_SIZE",intent.quoteAmountSek>=limits.minOrderSek&&intent.quoteAmountSek<=limits.maxOrderSek?"PASS":"FAIL",intent.quoteAmountSek,`${limits.minOrderSek}-${limits.maxOrderSek}`,"ORDER_SIZE_OUT_OF_RANGE"),
     req("SLIPPAGE_LIMIT",intent.maxSlippageBps<=limits.maxSlippageBps?"PASS":"FAIL",intent.maxSlippageBps,`<= ${limits.maxSlippageBps}`,"SLIPPAGE_TOO_HIGH"),

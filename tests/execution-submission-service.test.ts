@@ -78,6 +78,19 @@ beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date("2026-09-07T12:
 afterEach(() => vi.useRealTimers());
 
 describe("final guard immediately before dispatch (no network/database)", () => {
+  it("refuses DEMO credentials for a different external account", async () => {
+    const h = harness("DEMO");
+    vi.mocked(h.provider.health).mockResolvedValue({ status: "HEALTHY", credentialsValid: true, tradePermission: true, withdrawPermission: false, externalAccountId: "999" });
+    expect(await h.service.submitReady()).toMatchObject({ submitted: 0, blocked: 1 });
+    expect(h.events[0].reason).toBe("FINAL_DEMO_ACCOUNT_NOT_RECONCILED");
+    expect(h.provider.placeOrder).not.toHaveBeenCalled();
+  });
+  it("refuses a nominal SEK budget that understates actual DEMO quantity times price", async () => {
+    const h = harness("DEMO"); h.state.execution_orders[0].execution_intents.quantity = 10;
+    expect(await h.service.submitReady()).toMatchObject({ submitted: 0, blocked: 1 });
+    expect(h.events[0].reason).toBe("FINAL_DEMO_NOTIONAL_MISMATCH");
+    expect(h.provider.placeOrder).not.toHaveBeenCalled();
+  });
   it.each(["SHADOW", "DEMO"] as const)("claims then submits a valid %s order once with no awaited operation in between", async mode => {
     const h = harness(mode), result = await h.service.submitReady();
     expect(result).toMatchObject({ submitted: 1, blocked: 0, unavailable: 0 });

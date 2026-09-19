@@ -10,6 +10,12 @@ const classify = (validations: LinkedValidationEvidence[]) => classifyResearchPr
 const validation = (phase: string, extra: Partial<LinkedValidationEvidence> = {}): LinkedValidationEvidence => ({ id: `validation-${phase}`, phase, strategyDefinitionId: "definition", evaluationRunIds: ["run"], availableAt: historicalCutoff, createdAt: historicalCutoff, ...extra });
 
 describe("fail-closed strategy research provenance", () => {
+  const frozen={datasetId:"dataset",planId:"plan",strategyDefinitionId:"definition",inputHash:"a".repeat(64),
+    registeredAt:"2026-08-01T00:00:00Z",startsAt:"2026-08-02T00:00:00Z",endsAt:"2026-08-31T00:00:00Z",sealedAt:"2026-09-01T00:00:00Z"};
+  const prospective=(change={},validations:LinkedValidationEvidence[]=[])=>classifyResearchProvenance({evaluationRunId:"run",strategyDefinitionId:"definition",evaluationInputHash:"a".repeat(64),cutoffAt,validations,frozen:{...frozen,...change}});
+  it("accepts a matching prospective sealed dataset",()=>expect(prospective()).toMatchObject({split:"OUT_OF_SAMPLE",provenance:{status:"VERIFIED",prospectivePlanId:"plan",frozenDatasetId:"dataset"}}));
+  it.each([{registeredAt:"2026-08-03T00:00:00Z"},{sealedAt:"2026-08-15T00:00:00Z"},{sealedAt:"2026-09-08T00:00:00Z"},{inputHash:"b".repeat(64)},{strategyDefinitionId:"other"},{startsAt:"invalid"}])("rejects a mismatched or retrospective manifest %j",change=>expect(prospective(change).provenance.status).toBe("UNVERIFIED"));
+  it("does not relabel a dataset used for learning",()=>expect(prospective({},[validation("LEARNING")]).split).toBe("TRAIN"));
   it("keeps ordinary research exploratory even with a profitable candle input hash", () => {
     expect(classify([])).toMatchObject({ split: "EXPLORATION", provenance: { status: "UNVERIFIED", reason: "FROZEN_DATASET_PROVENANCE_UNAVAILABLE", evaluationInputHash: "candle-input-hash", frozenDatasetId: null, windowSource: "TRADE_SPAN_ONLY" } });
   });

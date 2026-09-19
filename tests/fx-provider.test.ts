@@ -5,6 +5,11 @@ import {
 } from "@/services/fx/ecb-provider";
 const csv = `KEY,FREQ,CURRENCY,CURRENCY_DENOM,EXR_TYPE,EXR_SUFFIX,TIME_PERIOD,OBS_VALUE\nA,D,USD,EUR,SP00,A,2026-01-02,1.2\nB,D,SEK,EUR,SP00,A,2026-01-02,12.0`;
 describe("historical FX", () => {
+  it("retains the direct EUR/SEK quote for EUR spot trading", () => {
+    const observations = normalizeEcbCsv(csv);
+    expect(observations.find(row => row.baseCurrency === "EUR")).toMatchObject({ rate: 12, quoteCurrency: "SEK", sourceReference: "EXR:D.SEK.EUR.SP00.A:2026-01-02" });
+    expect(observations.some(row => row.baseCurrency === "USDT" || row.baseCurrency === "USDC")).toBe(false);
+  });
   it("derives point-in-time USD/SEK from common EUR quotes", () => {
     const [x] = normalizeEcbCsv(csv);
     expect(x.rate).toBe(10);

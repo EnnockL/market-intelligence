@@ -86,7 +86,7 @@ async function fixture() {
      100,3,25,$4,$4,clock_timestamp()+interval '1 hour','[]',$2)`, [f.intent, `${prefix}-${f.intent}`, asset, f.stamp]);
   await observer.query(`insert into public.execution_safety_evaluations
     (id,evaluation_key,intent_id,policy_version,decision,requirements,context,limits,result_hash,information_cutoff_at,available_at)
-    values($1,$2,$3,'execution-safety-policy-v1','PASSED','[]','{}','{}',$2,$4,$4)`,
+    values($1,$2,$3,'execution-safety-policy-v2','PASSED','[]','{}','{}',$2,$4,$4)`,
   [f.safety, `${prefix}-${f.safety}`, f.intent, f.stamp]);
   await observer.query(`insert into public.execution_orders
     (id,intent_id,safety_evaluation_id,provider,provider_environment,client_order_id,provider_order_id,

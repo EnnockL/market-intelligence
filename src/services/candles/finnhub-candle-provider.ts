@@ -8,7 +8,7 @@ export class FinnhubCandleProvider implements HistoricalCandleProvider {
   readonly name = "finnhub-candles";
   constructor(private apiKey: string, private fetcher: typeof fetch = fetch, private baseUrl = "https://finnhub.io/api/v1", private retryOptions: FetchRetryOptions = {}) {}
   async getCandles(request: CandleRequest): Promise<CandleBatch> {
-    if (request.instrumentKind === "CRYPTO_POOL") throw new ProviderError("Finnhub provider does not support pool candles", this.name, "invalid_response", false);
+    if ((request.instrumentKind === "CRYPTO_POOL" || request.instrumentKind === "CRYPTO_SPOT")) throw new ProviderError("Finnhub provider does not support pool candles", this.name, "invalid_response", false);
     const resolution = resolutionFor(request.timeframe), from = Math.floor(Date.parse(request.cursor ?? request.startsAt) / 1000), to = Math.floor(Date.parse(request.endsAt) / 1000);
     const path = request.instrumentKind === "FOREX" ? "forex/candle" : "stock/candle";
     const response = await fetchWithRetry(() => this.fetcher(`${this.baseUrl}/${path}?symbol=${encodeURIComponent(request.providerSymbol)}&resolution=${resolution}&from=${from}&to=${to}&token=${encodeURIComponent(this.apiKey)}`), this.retryOptions);

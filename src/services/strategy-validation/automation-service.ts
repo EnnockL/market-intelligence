@@ -25,7 +25,7 @@ export class ValidationAutomationService {
         this.db
           .from("strategy_evaluation_runs")
           .select(
-            "id,information_cutoff_at,available_at,trade_count,strategy_evaluation_trades(entered_at,exited_at)",
+            "id,frozen_dataset_id,information_cutoff_at,available_at,trade_count,strategy_evaluation_trades(entered_at,exited_at)",
           )
           .eq("strategy_definition_id", h.strategy_definition_id)
           .lte("available_at", cutoffAt)
@@ -40,7 +40,7 @@ export class ValidationAutomationService {
       ]);
       if (runs.error) throw runs.error;
       if (validations.error) throw validations.error;
-      const windows = (runs.data ?? []).map((r: any) => {
+      const windows = (runs.data ?? []).filter((r:any) => !r.frozen_dataset_id).map((r: any) => {
         const trades = r.strategy_evaluation_trades ?? [];
         return {
           id: r.id,

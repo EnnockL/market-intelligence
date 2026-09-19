@@ -3,6 +3,9 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 
 export async function runDataGapRevisitChecks(db) {
+  // Prior disposable runs leave future-dated fixtures that become eligible as
+  // wall time advances. Retire only this harness's explicitly tagged records.
+  await db.query("update public.jackpot_candidates set current_state='EXPIRED' where collector_version='fixture' and created_from_event_id like 'gap-fixture-%' and current_state not in('EXPIRED','REJECTED')");
   // A fixture-only clock ahead of wall time permits deterministic PIT checks
   // without sleeps. Nothing here uses application env or production credentials.
   const epoch = Date.now() + 60_000;

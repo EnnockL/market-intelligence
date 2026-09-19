@@ -1,3 +1,5 @@
+import { runFx } from "@/workers/fx";
+import { runDueProspectiveStrategies } from "@/workers/prospective-strategies";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { BaselineForecastService } from "@/services/baseline-forecast/service";
 import { ForecastOutcomeService } from "@/services/forecast-outcomes/service";
@@ -298,6 +300,8 @@ export class ForecastSchedulerService {
     if (job.job_type === "FAST_FLOW") return runFastFlow(this.db, repo);
     if (job.job_type === "JACKPOT_COLLECTOR")
       return runJackpotCollector(this.db, repo);
+    if (job.job_type === "FX_REFRESH") return runFx(this.db,repo);
+    if (job.job_type === "PROSPECTIVE_STRATEGY_EVALUATION") return runDueProspectiveStrategies(this.db,now);
     if (job.job_type === "CANDLE_INGESTION") {
       if (!process.env.FINNHUB_API_KEY)
         throw new Error("FINNHUB_API_KEY_REQUIRED");

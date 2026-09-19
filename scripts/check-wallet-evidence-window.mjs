@@ -7,7 +7,7 @@ export async function checkWalletEvidenceWindow(db) {
   const asset = randomUUID(), wallet = randomUUID();
   const firstId = randomUUID(), secondId = randomUUID();
   const firstAt = "2026-08-01T12:00:00Z", secondAt = "2026-08-01T13:00:00Z";
-  await db.query("insert into public.assets(id,kind,symbol,name) values($1,'crypto','WINDOW_RETRY_SQL','Isolated window fixture')", [asset]);
+  await db.query("insert into public.assets(id,kind,symbol,name) values($1,'crypto',$2,'Isolated window fixture')", [asset, `WINDOW_RETRY_SQL_${asset}`]);
   await db.query("insert into public.wallets(id,address) values($1,$2)", [wallet, `window-retry-${wallet}`]);
   const transaction = (id, time, side = "buy", ingestedAt = "2026-08-02T00:00:00Z") => db.query(`
     insert into public.wallet_transactions(id,wallet_id,asset_id,transaction_hash,side,quantity,occurred_at,ingested_at)

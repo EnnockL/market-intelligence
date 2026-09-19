@@ -14,6 +14,9 @@ export async function checkFrontendPaperSnapshot(db) {
   await assert.rejects(db.query("select public.frontend_paper_snapshot_v1()"), error => error.code === "42501");
   await db.exec("reset role; begin");
   try {
+    // This disposable database may already contain integration-test portfolios.
+    // Rollback restores them together with all dependent rows after this check.
+    await db.exec("truncate public.paper_portfolios cascade");
     const a = randomUUID(), b = randomUUID(), privateId = randomUUID(), asset = randomUUID(), positionA = randomUUID();
     await db.query("insert into public.assets(id,kind,symbol,name) values($1,'crypto',$2,'Paper snapshot SQL fixture')", [asset, `paper-${asset}`]);
     await db.query(`insert into public.paper_portfolios(id,name,strategy,initial_capital_sek,cash_sek,assumptions,portfolio_scope,created_at) values

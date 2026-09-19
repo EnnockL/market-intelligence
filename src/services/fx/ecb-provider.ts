@@ -31,10 +31,10 @@ export function normalizeEcbCsv(
   }
   const out: FxObservation[] = [];
   for (const [date, rates] of byDate) {
-    if (!(rates.USD > 0 && rates.SEK > 0)) continue;
+    if (!(rates.SEK > 0)) continue;
     const effectiveAt = `${date}T15:00:00.000Z`,
       availableAt = `${date}T16:00:00.000Z`;
-    out.push({
+    if (rates.USD > 0) out.push({
       baseCurrency: "USD",
       quoteCurrency: "SEK",
       rate: rates.SEK / rates.USD,
@@ -45,6 +45,10 @@ export function normalizeEcbCsv(
       sourceReference: `EXR:D.USD+SEK.EUR.SP00.A:${date}`,
       dataQuality: 95,
     });
+    // EUR spot markets require the actual EUR/SEK observation, not USD/SEK.
+    out.push({ baseCurrency: "EUR", quoteCurrency: "SEK", rate: rates.SEK,
+      effectiveAt, observedAt: effectiveAt, availableAt, provider,
+      sourceReference: `EXR:D.SEK.EUR.SP00.A:${date}`, dataQuality: 95 });
   }
   return out.sort((a, b) => a.effectiveAt.localeCompare(b.effectiveAt));
 }

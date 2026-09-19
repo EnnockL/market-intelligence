@@ -111,6 +111,16 @@ describe("final execution evidence", () => {
     fixture.intent.quantity = null;
     expect(evaluateSubmissionEvidence(fixture).reason).toBe("FINAL_SELL_QUANTITY_UNAVAILABLE");
   });
+  it("rechecks a covered exit above all entry limits using current ledger quantities", () => {
+    const f=submissionFixture(); f.intent.side="SELL";
+    Object.assign((f.control as any).limits,{maxOpenPositions:1,maxTotalExposureSek:10,maxDailyLossSek:5});
+    setLedger(f,{openingInventory:[{instrumentId:"BTC-USDT",quantity:2,referencePriceSek:100}],
+      fills:[ledgerFill("loss","SELL",1,90,"2026-09-07T10:00:00.000Z")],
+      marks:[{instrumentId:"BTC-USDT",priceSek:100,observedAt:f.intent.informationCutoffAt,availableAt:f.intent.informationCutoffAt}]});
+    expect(evaluateSubmissionEvidence(f).decision).toBe("PASSED");
+    (f.safety as any).policy_version="execution-safety-policy-v1";
+    expect(evaluateSubmissionEvidence(f).reason).toBe("FINAL_SAFETY_EVIDENCE_UNKNOWN");
+  });
 });
 
 function setLedger(fixture: SubmissionEvidence, change: Partial<AccountLedgerV2Input>) {

@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { HistoricalCandleService } from "@/services/candles/service";
 import { FinnhubCandleProvider } from "@/services/candles/finnhub-candle-provider";
 import { GeckoTerminalCandleProvider } from "@/services/candles/geckoterminal-candle-provider";
+import { OkxSpotCandleProvider } from "@/services/candles/okx-spot-candle-provider";
 import { timeframeSeconds, type CandleRequest, type HistoricalCandleProvider } from "@/services/candles/provider";
 
 export async function runCandleIngestion(db: SupabaseClient, finnhubKey: string, now = new Date().toISOString(), sourceLimit = 3) {
@@ -11,7 +12,7 @@ export async function runCandleIngestion(db: SupabaseClient, finnhubKey: string,
   for (const source of sources ?? []) {
     await db.from("candle_sources").update({ status: "SYNCING", updated_at: now }).eq("id", source.id);
     try {
-      const provider: HistoricalCandleProvider = source.provider === "geckoterminal-ohlcv" ? new GeckoTerminalCandleProvider() : new FinnhubCandleProvider(finnhubKey);
+      const provider: HistoricalCandleProvider = source.provider === "okx-spot-candles" ? new OkxSpotCandleProvider() : source.provider === "geckoterminal-ohlcv" ? new GeckoTerminalCandleProvider() : new FinnhubCandleProvider(finnhubKey);
       const overlap = timeframeSeconds(source.timeframe) * 1000;
       const incrementalStart = source.cursor
         ? source.backfill_starts_at

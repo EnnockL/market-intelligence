@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 export async function checkIntelligenceProvenance(db) {
   const asset = randomUUID(), definition = randomUUID(), run = randomUUID();
   const cutoff = "2026-08-01T12:00:00Z", published = "2026-09-07T12:00:00Z";
-  await db.query("insert into public.assets(id,kind,symbol,name) values($1,'stock','PROVENANCE_SQL_FIXTURE','Disposable provenance fixture')", [asset]);
+  await db.query("insert into public.assets(id,kind,symbol,name) values($1,'stock',$2,'Disposable provenance fixture')", [asset, `PROVENANCE_SQL_${asset}`]);
   await db.query(`insert into public.strategy_definitions(id,strategy_key,version,name,market,timeframe,setup_type,definition,definition_hash,effective_at,available_at)
     values($1,$2,1,'Memory-only fixture','NASDAQ','5m','EMA_VWAP_MOMENTUM','{}',$2,$3,$3)`, [definition, `fixture-${definition}`, cutoff]);
   await db.query(`insert into public.strategy_evaluation_runs(id,run_key,lab_version,strategy_definition_id,asset_id,information_cutoff_at,available_at,status,input_hash,candle_count,setup_count,trade_count,sample_size,minimum_sample_size,metrics,result_hash)
@@ -37,7 +37,7 @@ export async function checkIntelligenceProvenance(db) {
   }
   await assert.rejects(insert(newIdentity({ ...current, provenance: null })), error => error.code === "23514");
   await assert.rejects(insert(newIdentity({ ...current, provenance: {} })), error => error.code === "23514");
-  await assert.rejects(insert(newIdentity({ ...current, dataset_split: "OUT_OF_SAMPLE", provenance: { ...provenance, status: "VERIFIED", windowSource: "FROZEN_DATASET_MANIFEST", frozenDatasetId: "unverified-claim" } })), error => error.code === "23514", "caller-provided VERIFIED JSON is not proof");
+  await assert.rejects(insert(newIdentity({ ...current, dataset_split: "OUT_OF_SAMPLE", provenance: { ...provenance, status: "VERIFIED", windowSource: "FROZEN_DATASET_MANIFEST", frozenDatasetId: "unverified-claim" } })), /FROZEN_PERFORMANCE_MISMATCH/, "caller-provided VERIFIED JSON is not proof");
   await assert.rejects(insert(newIdentity({ ...current, available_at: "2026-07-31T12:00:00Z" })), error => error.code === "23514", "v2 cannot be backdated before its input cutoff");
   await assert.rejects(db.query("update public.strategy_performance_snapshots set dataset_split='OUT_OF_SAMPLE' where id=$1", [old.id]), /immutable/i);
 

@@ -23,7 +23,7 @@ export async function checkExecutionReconciliation(db) {
       await db.query(`insert into public.execution_intents(id,intent_key,contract_version,source_type,source_id,asset_id,instrument_id,side,order_type,quote_amount_sek,quantity,max_slippage_bps,information_cutoff_at,available_at,expires_at,evidence_refs,payload_hash)
         values($1,$2,'execution-contract-v1','fixture','fixture',$3,'BTC-USDT','BUY','LIMIT',100,$4,25,$5,$5,clock_timestamp()+interval '1 minute','[]','fixture')`, [f.intent, `recon-${f.intent}`, asset, options.requestedQuantity === undefined ? 3 : options.requestedQuantity, f.observedAt]);
       await db.query(`insert into public.execution_safety_evaluations(id,evaluation_key,intent_id,policy_version,decision,requirements,context,limits,result_hash,information_cutoff_at,available_at)
-        values($1,$2,$3,'execution-safety-policy-v1','PASSED','[]','{}','{}','fixture',$4,$4)`, [f.safety, `recon-${f.safety}`, f.intent, f.observedAt]);
+        values($1,$2,$3,'execution-safety-policy-v2','PASSED','[]','{}','{}','fixture',$4,$4)`, [f.safety, `recon-${f.safety}`, f.intent, f.observedAt]);
       await db.query(`insert into public.execution_orders(id,intent_id,safety_evaluation_id,provider,provider_environment,client_order_id,provider_order_id,current_state,filled_quantity,average_price,last_provider_observed_at)
         values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, [f.order, f.intent, f.safety, f.provider, f.mode, f.client,
         options.providerIdMissing ? null : f.providerId, options.state ?? "PARTIALLY_FILLED", options.filledQuantity ?? 1,

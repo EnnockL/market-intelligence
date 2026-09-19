@@ -1,6 +1,6 @@
 import type { MarketCandle } from "@/domain/technical-structure";
 
-export type CandleInstrumentKind = "STOCK" | "FOREX" | "CRYPTO_POOL";
+export type CandleInstrumentKind = "STOCK" | "FOREX" | "CRYPTO_POOL" | "CRYPTO_SPOT";
 export interface CandleRequest { assetId: string; instrumentKind: CandleInstrumentKind; providerSymbol: string; timeframe: string; startsAt: string; endsAt: string; cursor?: string | null; limit?: number; tokenSide?: "base" | "quote"; }
 export interface ProviderCandle extends MarketCandle { provider: string; observedAt: string; dataQuality: number; rawPayload: unknown; }
 export interface CandleBatch { candles: ProviderCandle[]; nextCursor: string | null; rateLimit: { remaining: number | null; resetAt: string | null }; }
