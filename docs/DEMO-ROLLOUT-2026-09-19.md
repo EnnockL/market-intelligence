@@ -67,10 +67,36 @@ Validation of the background fix: dedicated >1000-asset pagination test, nine
 real local Supabase integration checks (including bounded delivery and lease
 recovery), 98-migration upgrade checks, TypeScript and production build passed.
 
-Final rollout verification still needs the background-fix release Ready, a fresh
-account capture and restoration of the original demo order switch. Existing
-holdings exceed entry exposure/position limits; covered sales can reduce holdings,
-but new buys are not granted a risk-limit exception. AI explanations remain paused
-because their API key is not configured. No exchange orders have been sent.
+## Final operating state
+
+- Background release `7a0cdc4` reached Vercel Ready; its database CI succeeded.
+- A new account capture returned KNOWN. Restored the original DEMO order switch
+  with an audit revision, unchanged limits and LIVE false.
+- Automatic production cron executed execution-pipeline-v2 successfully at
+  15:22 UTC. Jackpot collector and historical candle jobs also succeeded through
+  cron. Multiple jobs now run per invocation; the old one-job backlog is draining.
+- Web health returned HTTP 200. A manual cron request using the local secret
+  correctly received 401 (local credential differs); automatic production cron
+  is verified independently by its successful scheduled job records.
+- Follow-up wallet fix: the composite market provider now exposes its exact
+  historical source. Wallet enrichment validates, queues, stores and rebuilds
+  against that identity. Unexpected providers still fail. Liquidity history
+  pagination follows the existing asset/time index, preserving deterministic
+  complete reads and all read-budget guards.
+- Real production wallet run after these fixes: 10/10 enriched, 269 cycles rebuilt,
+  three wallets processed, zero errors or blocked wallets. Missing verified
+  execution context is still explicit; enrichment alone does not approve wallets.
+- Follow-up validation: 34 wallet/provider tests and TypeScript/build passed;
+  previous complete suite was 989 tests plus separate database checks.
+
+Existing holdings exceed entry exposure/position limits; covered sales can reduce
+holdings, but new buys receive no risk-limit exception. No eligible proposal and
+no exchange order existed at the last check. The BTC-EUR research period must
+finish and meet validation requirements; it does not promise a profitable strategy
+or automatic approval on its end date. AI explanations remain paused because
+OPENAI_API_KEY is not configured. All six existing balances remain on the account.
+
+Production: https://market-intelligence-ochre.vercel.app/execution
+
 
 Market data reference: [OKX API guide](https://www.okx.com/docs-v5/en/).

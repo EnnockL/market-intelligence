@@ -13,6 +13,8 @@ export interface CryptoMarketBatch { points: CryptoMarketPoint[]; rateLimit: Pro
 
 export interface CryptoMarketDataProvider {
   readonly name: string;
+  /** Exact underlying source identity for delegated historical price evidence. */
+  readonly historicalProviderName?: string;
   getCurrent(mintAddresses: string[]): Promise<CryptoMarketBatch>;
   getHistorical(request: HistoricalPriceRequest): Promise<CryptoMarketPoint>;
 }

@@ -22,7 +22,8 @@ export async function runWalletPnl(
   repository: IngestionRepository,
   maxTransactions = 10,
 ) {
-  const runId = await repository.startRun("wallet_pnl", provider.name);
+  const historicalSource = provider.historicalProviderName ?? provider.name;
+  const runId = await repository.startRun("wallet_pnl", historicalSource);
   let enriched = 0;
   let unavailable = 0;
   const errors: string[] = [];
@@ -30,23 +31,23 @@ export async function runWalletPnl(
     const budget = Math.max(1, Math.min(50, maxTransactions));
     // The database excludes completed records before limiting, and rotates
     // both wallets and retryable transactions using persisted attempt times.
-    const pending = (await repository.walletTransactionsForEnrichment(provider.name, budget)).slice(0, budget);
+    const pending = (await repository.walletTransactionsForEnrichment(historicalSource, budget)).slice(0, budget);
     for (const transaction of pending) {
       try {
         const tokenPoint = await provider.getHistorical({
           mintAddress: transaction.mintAddress,
           timestamp: transaction.occurred_at,
         });
-        assertHistoricalPoint(tokenPoint, transaction.mintAddress, provider.name);
+        assertHistoricalPoint(tokenPoint, transaction.mintAddress, historicalSource);
         const solPoint = await provider.getHistorical({
           mintAddress: WRAPPED_SOL,
           timestamp: transaction.occurred_at,
         });
-        assertHistoricalPoint(solPoint, WRAPPED_SOL, provider.name);
+        assertHistoricalPoint(solPoint, WRAPPED_SOL, historicalSource);
         const raw = transaction.raw_payload as { meta?: { fee?: number } } | null;
         await repository.saveTransactionEnrichment({
           transactionId: transaction.id,
-          provider: provider.name,
+          provider: historicalSource,
           tokenPoint,
           solPoint,
           quantity: Number(transaction.quantity),
@@ -60,13 +61,13 @@ export async function runWalletPnl(
         else enriched += 1;
       } catch (error) {
         errors.push(`${transaction.id}:${errorText(error)}`);
-        await repository.recordProviderError(runId, provider.name, error);
+        await repository.recordProviderError(runId, historicalSource, error);
         // retryable=false means the request should not immediately retry. It
         // does NOT prove that this transaction's historical data is absent.
         // Persist no enrichment on errors; the bounded DB queue rotates them.
       }
     }
-    const rebuild = await repository.rebuildWalletPnl(provider.name);
+    const rebuild = await repository.rebuildWalletPnl(historicalSource);
     const result: WalletPnlBatch = {
       runId,
       considered: pending.length,
@@ -89,7 +90,7 @@ export async function runWalletPnl(
       blockedWallets: error.result.blockedWallets.length, cycles: error.result.cycles,
       walletsProcessed: error.result.walletsProcessed,
     } : {};
-    try { await repository.recordProviderError(runId, provider.name, error, context); }
+    try { await repository.recordProviderError(runId, historicalSource, error, context); }
     finally { await repository.failRun(runId, error, enriched + unavailable); }
     throw error;
   }

@@ -41,5 +41,7 @@ export class FreeCryptoMarketProvider implements CryptoMarketDataProvider {
     return { points, rateLimit: primary.rateLimit };
   }
 
+  get historicalProviderName(): string { return this.historicalProvider.historicalProviderName ?? this.historicalProvider.name; }
+
   getHistorical(request: HistoricalPriceRequest) { return this.historicalProvider.getHistorical(request); }
 }

@@ -232,7 +232,9 @@ export class IngestionRepository {
     for (const ids of chunks(assetIds)) {
       liquidityRows.push(...await readBoundedPages<any>(`wallet-liquidity:${walletId}`, (from, to) => this.db.from("crypto_liquidity_snapshots")
         .select("id,asset_id,pool_address,liquidity_usd,effective_at,information_available_at,provider,data_quality")
-        .in("asset_id", ids).lte("information_available_at", now).order("id").range(from, to), 10_000 - liquidityRows.length));
+        .in("asset_id", ids).lte("information_available_at", now)
+        .order("asset_id").order("effective_at", { ascending: false }).order("information_available_at", { ascending: false }).order("id")
+        .range(from, to), 10_000 - liquidityRows.length));
       assessmentRows.push(...await readBoundedPages<any>(`wallet-risk:${walletId}`, (from, to) => this.db.from("token_risk_assessments")
         .select("id,asset_id,rug_status,rug_risk_score,information_cutoff_at,information_available_at,data_quality")
         .in("asset_id", ids).lte("information_available_at", now).order("id").range(from, to), 10_000 - assessmentRows.length));

@@ -1,5 +1,17 @@
 # Återstart efter full chattkontext
 
+**CURRENT STATE ? production startup 2026-09-19:** The historical checkpoints below
+are superseded by [DEMO-ROLLOUT-2026-09-19.md](DEMO-ROLLOUT-2026-09-19.md).
+Production has migrations 0001?0098, the real multiasset OKX demo baseline, KNOWN
+account/risk captures, active DEMO orders with unchanged limits and LIVE disabled.
+The v2 execution pipeline has run successfully through production cron. BTC-EUR
+5-minute candles are collecting. A prospective research window is registered from
+19 September through 19 October 2026. No eligible proposal or exchange order yet;
+existing inventory exceeds entry limits, and research approval is still required.
+All six balances are preserved. No need to repeat baseline registration or apply
+already-recorded migrations. Read the current rollout document before continuing.
+
+
 Sammanställd 2026-09-19 från slutet av den lokalt sparade tråden **Bygg Market Intelligence Engine**, projektfiler och Git. Detta är en kort överlämning, inte hela historiken. Den gamla tråden har inte ändrats eller raderats.
 
 **Uppdatering efter fortsättningen:** Den tidigare blockerade lokala testuppgiften är nu klar: 56 integrationstester, sju SQL-kontrollgrupper (även återkörning) och samtidighetskontroller med tre anslutningar godkända. Se `LOCAL-BACKEND-VALIDATION-2026-09-19.md` för aktuellt nuläge, lokala testfixar och återkörning. Beskrivningen nedan av var gamla tråden stannade är historik.

@@ -1,3 +1,4 @@
+import { FreeCryptoMarketProvider } from "@/services/crypto-market/free-market-provider";
 import { describe, expect, it, vi } from "vitest";
 import type { IngestionRepository } from "@/repositories/ingestion-repository";
 import { runWalletPnl, WalletPnlBatchError } from "@/workers/wallet-pnl";
@@ -29,6 +30,19 @@ function pnlFixture() {
 }
 
 describe("wallet PnL operational failures never become permanent missing evidence", () => {
+  it("validates and persists a composite provider's exact historical source", async () => {
+    const f = pnlFixture();
+    const composite = new FreeCryptoMarketProvider(f.provider, f.provider, f.provider);
+    await expect(runWalletPnl(composite, f.repo as unknown as IngestionRepository)).resolves.toMatchObject({ enriched: 1 });
+    expect(f.repo.walletTransactionsForEnrichment).toHaveBeenCalledWith("fixture", 10);
+    expect(f.repo.saveTransactionEnrichment).toHaveBeenCalledWith(expect.objectContaining({ provider: "fixture", tokenPoint: expect.objectContaining({ provider: "fixture" }) }));
+    expect(f.repo.rebuildWalletPnl).toHaveBeenCalledWith("fixture");
+    f.provider.getHistorical.mockResolvedValue({ ...point("mint"), provider: "unexpected" });
+    f.repo.saveTransactionEnrichment.mockClear();
+    await expect(runWalletPnl(composite, f.repo as unknown as IngestionRepository)).rejects.toBeInstanceOf(WalletPnlBatchError);
+    expect(f.repo.saveTransactionEnrichment).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["401 authorization", () => new ProviderError("fixture auth denied", "fixture", "unauthorized", false, 401)],
     ["403 authorization", () => new ProviderError("fixture access denied", "fixture", "unauthorized", false, 403)],
