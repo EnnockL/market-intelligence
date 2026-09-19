@@ -137,3 +137,22 @@ One baseline-forecast target also recorded a statement timeout during rollout an
 is retrying. These are remaining background processing limitations, not an
 unknown demo account or permission to trade. AI explanations remain paused for a
 missing API key. No strategy has been promoted by this startup work.
+
+## Resumable wallet rebuild (0101)
+
+Whole-wallet reads previously stopped at 5,000 transactions or 10,000 liquidity
+observations. Wallet rebuilding now freezes a knowledge cutoff, leases bounded
+asset batches, stores private checkpoints, and queries liquidity/risk context in
+PostgreSQL. Complete cycles, metrics, scores and verification results publish in
+one transaction. Crashes resume without exposing partially replaced results.
+The per-asset transaction cap remains explicit; missing evidence remains unknown.
+
+The execution page now explains the account entry limits, BTC-EUR prospective
+window and latest strategy decision. It displays recorded state, not permission
+to submit an order; final fresh-data and order checks remain authoritative.
+
+Validation: 994 unit tests, 60 real local Supabase integration tests, SQL role,
+lease and publication guards, all 101 migrations including the historical upgrade
+path, and Next production build passed. The wallet regression covers 5,050 trades,
+10,001 liquidity observations, late-data exclusion, checkpoint recovery, rollback
+and idempotent publication.

@@ -1,3 +1,4 @@
+import { checkWalletRebuild } from "./check-wallet-rebuild.mjs";
 import { checkProspectiveStrategyDatasets } from "./check-prospective-strategy-datasets.mjs";
 /**
  * Isolated schema/RPC smoke test. Uses memory-only PostgreSQL, never application
@@ -189,6 +190,7 @@ try {
   console.log("Passed: atomic baseline rollback, PIT rejection, complete-bundle idempotency, identity conflicts and explicit legacy-partial failure.");
   await checkIntelligenceProvenance(db);
     await checkProspectiveStrategyDatasets(db);
+    await checkWalletRebuild(db);
   await runDataGapRevisitChecks(db);
   await checkDemoAccountReconciliation(db);
   await checkExecutionFinalGuard(db);

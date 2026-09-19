@@ -30,6 +30,14 @@ function pnlFixture() {
 }
 
 describe("wallet PnL operational failures never become permanent missing evidence", () => {
+  it("reports checkpoint progress without treating a partial wallet as verified or failed", async () => {
+    const f = pnlFixture();
+    const pendingWallets = [{ walletId: "large", jobId: "checkpoint", completedAssets: 100, totalAssets: 2552 }];
+    f.repo.rebuildWalletPnl.mockResolvedValue({ cycles: 0, walletsProcessed: 0, blocked: [], pendingWallets, informationBlockers: [] } as any);
+    await expect(f.invoke()).resolves.toMatchObject({ status: "in_progress", cycles: 0, pendingWallets, blockedWallets: [] });
+    expect(f.repo.finishRun).toHaveBeenCalledWith("pnl-run", 1);
+    expect(f.repo.failRun).not.toHaveBeenCalled();
+  });
   it("validates and persists a composite provider's exact historical source", async () => {
     const f = pnlFixture();
     const composite = new FreeCryptoMarketProvider(f.provider, f.provider, f.provider);

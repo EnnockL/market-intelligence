@@ -1,3 +1,4 @@
+import { checkWalletRebuild } from "./check-wallet-rebuild.mjs";
 import { checkProspectiveStrategyDatasets } from "./check-prospective-strategy-datasets.mjs";
 /** Local test stack only. Does not load application env files or deploy anything. */
 import { spawn, spawnSync } from "node:child_process";
@@ -83,7 +84,7 @@ if (mode === "sql") {
   const client = new pg.default.Client({ connectionString: status.DB_URL, application_name: "market-intelligence-local-sql-checks" });
   await client.connect();
   try {
-    assert.equal((await client.query("select count(*)::int n from supabase_migrations.schema_migrations")).rows[0].n, 100);
+    assert.equal((await client.query("select count(*)::int n from supabase_migrations.schema_migrations")).rows[0].n, 101);
     await client.query("set search_path=public,extensions; set statement_timeout='30s'");
     const db = { query: (sql, params) => client.query(sql, params), exec: sql => client.query(sql),
       parallel: async (sql, parameterSets) => {
@@ -96,6 +97,7 @@ if (mode === "sql") {
     await checkDemoAccountReconciliation(db);
     await checkIntelligenceProvenance(db);
     await checkProspectiveStrategyDatasets(db);
+    await checkWalletRebuild(db);
     await runDataGapRevisitChecks(db);
     await checkExecutionFinalGuard(db);
     await checkExecutionFillProvenance(db);

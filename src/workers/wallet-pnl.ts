@@ -8,6 +8,7 @@ type WalletPnlBatch = {
   runId: string; considered: number; enriched: number; unavailable: number; recordsProcessed: number;
   cycles: number; walletsProcessed: number; blockedWallets: Array<{ walletId: string; reason: string }>;
   informationBlockers: string[]; errors: string[];
+  pendingWallets: Array<{ walletId: string; jobId: string; completedAssets: number; totalAssets: number }>;
 };
 
 export class WalletPnlBatchError extends Error {
@@ -77,12 +78,13 @@ export async function runWalletPnl(
       cycles: rebuild.cycles,
       walletsProcessed: rebuild.walletsProcessed,
       blockedWallets: rebuild.blocked,
+      pendingWallets: rebuild.pendingWallets ?? [],
       informationBlockers: rebuild.informationBlockers,
       errors,
     };
     if (errors.length || rebuild.blocked.length) throw new WalletPnlBatchError(result);
     await repository.finishRun(runId, result.recordsProcessed);
-    return { ...result, status: "succeeded" as const };
+    return { ...result, status: result.pendingWallets.length ? "in_progress" as const : "succeeded" as const };
   } catch (error) {
     const context = error instanceof WalletPnlBatchError ? {
       considered: error.result.considered, enriched: error.result.enriched, unavailable: error.result.unavailable,
