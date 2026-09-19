@@ -186,3 +186,12 @@ The scheduler is enabled and HEALTHY, with its next run at 16:55:48 UTC. The
 remaining `VERIFIED_EXECUTION_CONTEXT_UNAVAILABLE` is an evidence limitation,
 not a failed job. Production cron authentication itself remains Vercel-managed;
 the local cron secret was rejected and no production secret was changed.
+
+## Experimental demo authorization supersedes the former startup blocker
+
+The user subsequently chose experimental demo trading on the existing account.
+See [EXPERIMENTAL-DEMO-2026-09-19.md](EXPERIMENTAL-DEMO-2026-09-19.md). Migration
+0102 and pipeline v3 introduce an explicitly unvalidated BTC-EUR pilot with its
+own SEK 200 allocation and SEK 100 order cap, rather than raising whole-account
+risk limits or granting research approval. The pilot is activated through
+September 26; its first fresh-data result is WAITING_FOR_BULLISH_SETUP.

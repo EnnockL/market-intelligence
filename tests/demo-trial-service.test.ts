@@ -25,7 +25,7 @@ function harness(){
   const db:any={from(table:string){const q:any={};let insert:any,single=false;for(const m of ["select","eq","in","lte","order","limit","gt"])q[m]=()=>q;
     q.single=q.maybeSingle=()=>{single=true;return q};q.insert=(row:any)=>{insert=row;return q};q.then=(resolve:any)=>Promise.resolve({data:insert?(writes.push(insert),{id:"decision"}):single&&Array.isArray(state[table])?state[table][0]??null:state[table],error:null}).then(resolve);return q;}};
   const provider:any={name:"okx-demo",mode:"DEMO",health:vi.fn(async()=>({status:"HEALTHY",credentialsValid:true,tradePermission:true,withdrawPermission:false})),cancelOrder:vi.fn()};
-  return{service:new DemoTrialService(db,provider),create,submit,state,writes,full,proof};
+  return{service:new DemoTrialService(db,provider),create,submit,state,writes,full,proof,common};
 }
 beforeEach(()=>{vi.useFakeTimers();vi.setSystemTime(now)});afterEach(()=>{vi.restoreAllMocks();vi.useRealTimers()});
 describe("experimental demo orchestration",()=>{
@@ -40,6 +40,16 @@ describe("experimental demo orchestration",()=>{
   });
   it("does not repeat a previously evaluated setup",async()=>{
     const h=harness();h.state.demo_trial_decisions={id:"old"};expect((await h.service.run()).status).toBe("ALREADY_EVALUATED");expect(h.create).not.toHaveBeenCalled();
+  });
+  it("exits only the fee-adjusted position bought by the trial",async()=>{
+    const h=harness();h.proof.ledger=rebuildAccountLedgerV2({...h.common,openingCashSek:200,fills:[{fillId:"fill",accountId:"account",instrumentId:"BTC-EUR",side:"BUY",quantity:.0001,priceSek:1000000,feeSek:1,feeAsset:"BASE",feeBaseQuantity:.000001,occurredAt:now,availableAt:now}]});
+    h.state.market_candles=h.state.market_candles.map((b:any,i:number)=>({...b,close:100+i,high:101+i,low:99+i}));
+    expect(await h.service.run()).toMatchObject({status:"EXPERIMENTAL_ORDER",side:"SELL",reason:"TREND_EXIT"});
+    const intent=h.create.mock.calls[0][0];expect(intent.quantity).toBeLessThanOrEqual(.000099);expect(intent.quantity).toBeGreaterThan(.000098);
+    expect(intent.quoteAmountSek).toBeLessThanOrEqual(100);
+  });
+  it("stops new entries when the pilot window ends",async()=>{
+    const h=harness();h.state.demo_trials[0].ends_at=now;expect(await h.service.run()).toMatchObject({status:"WAIT",reason:"TRIAL_ENDED"});expect(h.create).not.toHaveBeenCalled();
   });
   it("honors a global kill switch before account or provider activity",async()=>{
     const h=harness();h.state.execution_controls.kill_switch=true;expect((await h.service.run()).status).toBe("DISABLED");expect(h.create).not.toHaveBeenCalled();

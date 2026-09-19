@@ -1,21 +1,28 @@
 # Återstart efter full chattkontext
 
-**CURRENT STATE - production 2026-09-19, code 5878cca:** Historical checkpoints
-below are superseded by [DEMO-ROLLOUT-2026-09-19.md](DEMO-ROLLOUT-2026-09-19.md).
-Production has migrations 0001-0101, the multiasset OKX demo baseline, KNOWN
-account/risk captures, active DEMO orders with unchanged limits and LIVE disabled.
-The new resumable wallet engine completed both formerly blocked histories:
-2,409 transactions / 873 assets / 865 cycles and 11,884 transactions / 2,552 assets /
-3,260 cycles. Atomic publication succeeded; missing evidence remains unverified.
-Wallet cron also completed at 16:40:48 UTC (3 wallets, 272 cycles, no blocked
-histories); the enabled job is HEALTHY. The forecast timeout recovered: its v2 bundle exists, and recent scheduled runs
-completed. Execution now explains account limits and the prospective test window.
-BTC-EUR five-minute data collects for the registered 19 September-19 October test.
-No eligible proposal or exchange order yet. Existing inventory exceeds entry
-limits and strategy approval remains required. All six balances are preserved.
-AI explanations still lack a key. Do not repeat baseline registration or apply
-already-recorded migrations. 994 unit and 60 actual integration tests passed,
-as did migration role/lease/rollback checks, the 101-migration upgrade and build.
+**CURRENT STATE - experimental DEMO activated 2026-09-19:**
+See [EXPERIMENTAL-DEMO-2026-09-19.md](EXPERIMENTAL-DEMO-2026-09-19.md).
+The user explicitly authorized experimental BTC-EUR trading on the existing
+account: SEK 100/order, SEK 200 new exposure. Trial
+`4e604e23-93ff-4ba5-b129-53662c8b0747` is enabled through September 26, 18:39 UTC.
+Production has migrations 0001-0102 and execution pipeline v3. Implementation
+c69d732 plus direct candle refresh 714a89a are deployed. The trial uses a separate
+zero-inventory SEK 200 ledger, only its linked verified fills, and the existing
+full-account reconciliation/final submission guard. Original holdings cannot be
+sold by the trial. LIVE remains disabled. Ordinary account limits are unchanged.
+The first current-data run returned WAITING_FOR_BULLISH_SETUP. The budget is
+KNOWN, cash 200, exposure zero; no exchange order has been created so far.
+Automatic production pipeline v3 also passed at 18:42:03 UTC with the trial
+step waiting for the same setup; scheduler HEALTHY, no errors. The execution
+page shows an active explicitly unvalidated BTC-EUR experiment.
+The original September 19-October 19 research test continues separately; no
+research or runtime approval was manufactured. Read the pilot document for
+entry/exit/cancellation rules, expiry, testing and final rollout verification.
+Previous wallet-history blockers and forecast timeout remain resolved. Both
+large wallets completed atomically; missing historical evidence stays unknown.
+AI explanations still lack a key. Do not repeat demo baseline registration,
+already-recorded migrations, or trial activation.
+
 
 
 

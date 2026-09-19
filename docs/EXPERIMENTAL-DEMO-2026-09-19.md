@@ -53,3 +53,17 @@ Production activation:
 - After that refresh, the production-data run returned WAITING_FOR_BULLISH_SETUP:
   fresh data is usable, but the current EMA trend does not support a long entry.
   No artificial order or validation approval was created to manufacture activity.
+
+Authenticated production /execution returned HTTP 200 with an active experiment,
+its unvalidated label and WAITING_FOR_BULLISH_SETUP, without query errors. The
+post-refresh app revision 714a89a is Ready in production. Two additional tests
+verify fee-adjusted trial-only exits and entry shutdown at expiry (1,008 unit
+checks in total across the full run and these targeted additions).
+
+Automatic production verification at 18:42:03 UTC:
+- execution-pipeline-v3 completed successfully, scheduler HEALTHY with no error.
+- Its demo_trial step ran automatically, refreshed/captured evidence, and returned
+  ALREADY_EVALUATED / WAITING_FOR_BULLISH_SETUP for the same evaluated candle.
+- Latest trial snapshot remains KNOWN, cash SEK 200, exposure zero, no reasons.
+- No trial exchange orders or fills yet. A qualifying future entry can proceed
+  without another activation; expiry, budget and all final checks still apply.
