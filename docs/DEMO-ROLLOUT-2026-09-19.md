@@ -113,3 +113,11 @@ execution, strategy lab, data collection) return 200. Market-regime and jackpot
 cron jobs have both recovered to HEALTHY; automatic v2 execution has succeeded
 repeatedly. The pre-release wallet invocation failed before loading the new code;
 the corrected provider and indexed query passed the real 10-transaction worker run.
+
+Migration 0100 adds a covering event-stream index after a subsequent collector
+poll still timed out under concurrent load. The measured production registration
+query now uses an index-only scan and hash anti-join (about 1.5 seconds on its first
+measured read); a real subsequent collector call succeeded. Seven actual local
+consumer integration checks passed before applying the index. Execution controls
+were unchanged. Transient failed scheduler runs remain visible and retry normally;
+a successful direct worker check is not relabeled as a successful scheduled run.
