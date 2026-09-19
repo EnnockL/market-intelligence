@@ -38,3 +38,18 @@ SQL guards including private roles, old-inventory protection, budget, fee buffer
 expiry, wrong-source binding, kill switch and duplicate claims; production build.
 No trial is enabled by migration 0102. Production activation and observed outcome
 are recorded below after deployment.
+
+Production activation:
+- Migration 0102 is applied, and code c69d732 deployed successfully. The database
+  deployment workflow passed. 60 local Supabase integration checks passed (the
+  pipeline lease expectation was updated to 180 seconds and rerun).
+- Trial 4e604e23-93ff-4ba5-b129-53662c8b0747 is enabled on okx-demo-primary from
+  2026-09-19 18:39:03.598 UTC until 2026-09-26 18:39:03.598 UTC.
+- Initial actual account capture and separate allocation are KNOWN: SEK 200 cash,
+  zero trial exposure/inventory. Existing account holdings remain separate.
+- The initial run correctly rejected stale bars. The pilot now directly refreshes
+  up to 24 hours of confirmed BTC-EUR bars (three bounded pages) before signal
+  evaluation, so it does not depend on the shared multi-source refresh queue.
+- After that refresh, the production-data run returned WAITING_FOR_BULLISH_SETUP:
+  fresh data is usable, but the current EMA trend does not support a long entry.
+  No artificial order or validation approval was created to manufacture activity.

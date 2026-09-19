@@ -5,9 +5,11 @@ import {ExecutionService} from "@/services/execution/service";
 import * as evidence from "@/services/execution/demo-trial-evidence";
 import {rebuildAccountLedgerV2} from "@/domain/account-ledger-v2";
 import {executionClientOrderId} from "@/domain/execution";
+import {HistoricalCandleService} from "@/services/candles/service";
 
 const now="2026-09-19T12:00:00.000Z",started="2026-09-19T00:00:00.000Z";
 function harness(){
+  vi.spyOn(HistoricalCandleService.prototype,"sync").mockResolvedValue({provider:"okx-spot-candles",fetched:30,inserted:0,pages:1,nextCursor:null,status:"COMPLETED"});
   const common={accountId:"account",baselineAt:started,openingCashStatus:"DECLARED" as const,historyComplete:true,cutoffAt:now,dailyWindowStartAt:started,fills:[],pendingOrders:[],marks:[{instrumentId:"BTC-EUR",priceSek:1000000,observedAt:now,availableAt:now}]};
   const full=rebuildAccountLedgerV2({...common,openingCashSek:50000,openingInventory:[{instrumentId:"BTC-EUR",quantity:2,referencePriceSek:1000000}],demoReconciliation:{externalAccountId:"123",instrumentId:"BTC-EUR",quoteCurrency:"EUR",quoteSekRate:10,feeRate:.001,evidenceHash:"a".repeat(64),market:{baseCurrency:"BTC",quoteCurrency:"EUR",bid:100000,ask:100001,observedAt:now,lotSize:.00000001,minimumSize:.00001,tickSize:.1}}});
   const ledger=rebuildAccountLedgerV2({...common,openingCashSek:200});

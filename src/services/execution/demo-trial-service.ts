@@ -6,6 +6,8 @@ import { loadDemoTrialEvidence } from "./demo-trial-evidence";
 import { demoTrialRisk, demoTrialSignal } from "@/domain/demo-trial";
 import { deterministicDigest } from "@/domain/events";
 import type { SafetyContext } from "@/domain/execution";
+import { HistoricalCandleService } from "@/services/candles/service";
+import { OkxSpotCandleProvider } from "@/services/candles/okx-spot-candle-provider";
 
 export class DemoTrialService {
   constructor(private db:SupabaseClient,private provider:ExecutionProvider){}
@@ -29,6 +31,9 @@ export class DemoTrialService {
       await this.provider.cancelOrder(trial.instrument_id,order.client_order_id,order.provider_order_id);
     }
     if(active.data?.length)await execution.reconcile();
+    const refreshAt=new Date().toISOString();
+    await new HistoricalCandleService(this.db,new OkxSpotCandleProvider()).sync({assetId:trial.asset_id,instrumentKind:"CRYPTO_SPOT",
+      providerSymbol:"BTC-EUR",timeframe:"5m",startsAt:new Date(Date.parse(refreshAt)-86400000).toISOString(),endsAt:refreshAt,limit:100},3);
     const cutoff=new Date().toISOString();
     const candles=await this.db.from("market_candles").select("id,closed_at,available_at,close,high,low,volume,raw_payload")
       .eq("asset_id",trial.asset_id).eq("provider","okx-spot-candles").eq("timeframe","5m")
