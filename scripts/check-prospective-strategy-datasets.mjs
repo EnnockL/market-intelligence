@@ -17,11 +17,16 @@ export async function checkProspectiveStrategyDatasets(db) {
       select $1||n,$2,'oos-fixture','5m',$3::timestamptz+n*interval '5 minutes',$3::timestamptz+(n+1)*interval '5 minutes',
       $3::timestamptz+(n+1)*interval '5 minutes',$3::timestamptz+(n+1)*interval '5 minutes',100,102,99,101,10,100,
       case when n=20 then $4::timestamptz+interval '1 day' else $3::timestamptz+(n+1)*interval '5 minutes' end from generate_series(0,20) n`,[plan,asset,start,end]);
+    await db.query(`insert into public.market_regime_snapshots(snapshot_key,policy_version,scope,regime,information_cutoff_at,available_at,sample_size,expected_assets,coverage_pct,evidence_refs,result_hash,created_at)
+      values($1,'fixture','STOCK','RISK_ON',$3,$3,3,3,100,'[]',$1,$3),($2,'fixture','CRYPTO','RISK_OFF',$3,$3,3,3,100,'[]',$2,$3)`,[randomUUID(),randomUUID(),start]);
     await db.exec('set local role service_role');
     await reject(()=>db.query("select public.register_strategy_dataset($1,$2,'oos-fixture',$3,$4)",[definition,asset,start,end]),/PROSPECTIVE_WINDOW_REQUIRED/);
     await reject(()=>db.query('insert into public.strategy_dataset_plans(strategy_definition_id,asset_id,provider,starts_at,ends_at) values($1,$2,\'x\',now()+interval \'1 day\',now()+interval \'2 days\')',[definition,asset]),/permission denied/);
     const sealed=(await db.query('select to_jsonb(public.seal_strategy_dataset($1)) result',[plan])).rows[0].result;
     assert.equal(sealed.payload.candles.length,20,'late/backdated source is excluded');
+    assert.equal(sealed.payload.assetClass,'CRYPTO');
+    assert.ok(sealed.payload.regimes.length>0);
+    assert.ok(sealed.payload.regimes.every(r=>r.scope==='CRYPTO'),'stock regimes must never label crypto trades');
     assert.equal((await db.query('select to_jsonb(public.seal_strategy_dataset($1)) result',[plan])).rows[0].result.id,sealed.id,'same immutable dataset on retry');
     const insertRun=hash=>db.query(`insert into public.strategy_evaluation_runs(id,run_key,lab_version,strategy_definition_id,asset_id,information_cutoff_at,available_at,status,input_hash,candle_count,setup_count,trade_count,sample_size,minimum_sample_size,metrics,result_hash,frozen_dataset_id)
       values($1::uuid,$1::text,'strategy-pattern-lab-v2',$2,$3,$4,clock_timestamp(),'INSUFFICIENT_DATA',$5,20,0,0,0,30,'{}',$5,$6)`,[run,definition,asset,end,hash,sealed.id]);

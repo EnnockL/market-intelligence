@@ -100,3 +100,16 @@ Production: https://market-intelligence-ochre.vercel.app/execution
 
 
 Market data reference: [OKX API guide](https://www.okx.com/docs-v5/en/).
+
+## Final research isolation check
+
+Migration 0099 scopes prospective regime history to the tested asset class and
+includes that class in the frozen manifest hash. Crypto trades cannot inherit a
+stock regime. Verified in the 99-migration upgrade and actual local PostgreSQL
+SQL suite, then applied to production without changing execution controls.
+
+Wallet release `79ae927` is Ready on production. All tested HTTP routes (health,
+execution, strategy lab, data collection) return 200. Market-regime and jackpot
+cron jobs have both recovered to HEALTHY; automatic v2 execution has succeeded
+repeatedly. The pre-release wallet invocation failed before loading the new code;
+the corrected provider and indexed query passed the real 10-transaction worker run.

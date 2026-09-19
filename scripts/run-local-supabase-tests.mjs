@@ -83,7 +83,7 @@ if (mode === "sql") {
   const client = new pg.default.Client({ connectionString: status.DB_URL, application_name: "market-intelligence-local-sql-checks" });
   await client.connect();
   try {
-    assert.equal((await client.query("select count(*)::int n from supabase_migrations.schema_migrations")).rows[0].n, 98);
+    assert.equal((await client.query("select count(*)::int n from supabase_migrations.schema_migrations")).rows[0].n, 99);
     await client.query("set search_path=public,extensions; set statement_timeout='30s'");
     const db = { query: (sql, params) => client.query(sql, params), exec: sql => client.query(sql),
       parallel: async (sql, parameterSets) => {

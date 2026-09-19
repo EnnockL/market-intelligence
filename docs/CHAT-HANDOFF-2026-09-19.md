@@ -2,7 +2,7 @@
 
 **CURRENT STATE ? production startup 2026-09-19:** The historical checkpoints below
 are superseded by [DEMO-ROLLOUT-2026-09-19.md](DEMO-ROLLOUT-2026-09-19.md).
-Production has migrations 0001?0098, the real multiasset OKX demo baseline, KNOWN
+Production has migrations 0001?0099, the real multiasset OKX demo baseline, KNOWN
 account/risk captures, active DEMO orders with unchanged limits and LIVE disabled.
 The v2 execution pipeline has run successfully through production cron. BTC-EUR
 5-minute candles are collecting. A prospective research window is registered from
