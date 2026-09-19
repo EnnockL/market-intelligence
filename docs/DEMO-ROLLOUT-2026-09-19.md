@@ -156,3 +156,33 @@ lease and publication guards, all 101 migrations including the historical upgrad
 path, and Next production build passed. The wallet regression covers 5,050 trades,
 10,001 liquidity observations, late-data exclusion, checkpoint recovery, rollback
 and idempotent publication.
+
+Production verification for code `5878cca`:
+
+- Migration 0101 and GitHub database workflow succeeded. Vercel deployment
+  `dpl_EtrJWnwDMXnqAwq9nP1HjXfWkz2C` is Ready on the production domain.
+- Wallet `ca74da6c-20fb-4801-bf3d-ea207265c7c7`: all 873 assets / 2,409
+  transactions processed, 865 cycles atomically published.
+- Wallet `d397585a-9e1d-4eb6-9bcd-ffb102afa2f3`: all 2,552 assets / 11,884
+  transactions processed, 3,260 cycles atomically published.
+- Both jobs are COMPLETE, staged and public cycle counts match. Both wallets
+  still have zero verified trades and unknown realized PnL because required
+  historical evidence is missing; completing a rebuild does not invent it.
+- The prior forecast timeout target has a complete v2 atomic bundle. Three
+  consecutive recent baseline runs completed without errors; no speculative
+  baseline query change was needed.
+- Authenticated production `/execution` returned 200 with the new panel, the
+  correct `okx-demo-primary` account, the actual entry-limit blocker and the
+  October 19 test end. All panel queries succeeded. Public health returned 200.
+- BTC-EUR has 13 prospective five-minute bars through 16:35 UTC. No execution
+  orders or fills exist. DEMO remains enabled and LIVE remains disabled.
+- The wallet scheduler was temporarily disabled only during the engine switch
+  and manual backlog completion, then restored with its original status and an
+  immediate due time. It must earn HEALTHY through a real successful run.
+
+At 16:40:48 UTC the restored production cron completed wallet-pnl successfully:
+3 wallets, 272 cycles, 9 enrichments, no blocked/pending wallets, and no errors.
+The scheduler is enabled and HEALTHY, with its next run at 16:55:48 UTC. The
+remaining `VERIFIED_EXECUTION_CONTEXT_UNAVAILABLE` is an evidence limitation,
+not a failed job. Production cron authentication itself remains Vercel-managed;
+the local cron secret was rejected and no production secret was changed.

@@ -1,15 +1,22 @@
 # Återstart efter full chattkontext
 
-**CURRENT STATE ? production startup 2026-09-19:** The historical checkpoints below
-are superseded by [DEMO-ROLLOUT-2026-09-19.md](DEMO-ROLLOUT-2026-09-19.md).
-Production has migrations 0001?0100, the real multiasset OKX demo baseline, KNOWN
+**CURRENT STATE - production 2026-09-19, code 5878cca:** Historical checkpoints
+below are superseded by [DEMO-ROLLOUT-2026-09-19.md](DEMO-ROLLOUT-2026-09-19.md).
+Production has migrations 0001-0101, the multiasset OKX demo baseline, KNOWN
 account/risk captures, active DEMO orders with unchanged limits and LIVE disabled.
-The v2 execution pipeline has run successfully through production cron. BTC-EUR
-5-minute candles are collecting. A prospective research window is registered from
-19 September through 19 October 2026. No eligible proposal or exchange order yet;
-existing inventory exceeds entry limits, and research approval is still required.
-All six balances are preserved. Remaining background limitations: two wallet histories exceed the read budget, one forecast target is retrying a timeout, and AI explanations lack a key. No need to repeat baseline registration or apply
-already-recorded migrations. Read the current rollout document before continuing.
+The new resumable wallet engine completed both formerly blocked histories:
+2,409 transactions / 873 assets / 865 cycles and 11,884 transactions / 2,552 assets /
+3,260 cycles. Atomic publication succeeded; missing evidence remains unverified.
+Wallet cron also completed at 16:40:48 UTC (3 wallets, 272 cycles, no blocked
+histories); the enabled job is HEALTHY. The forecast timeout recovered: its v2 bundle exists, and recent scheduled runs
+completed. Execution now explains account limits and the prospective test window.
+BTC-EUR five-minute data collects for the registered 19 September-19 October test.
+No eligible proposal or exchange order yet. Existing inventory exceeds entry
+limits and strategy approval remains required. All six balances are preserved.
+AI explanations still lack a key. Do not repeat baseline registration or apply
+already-recorded migrations. 994 unit and 60 actual integration tests passed,
+as did migration role/lease/rollback checks, the 101-migration upgrade and build.
+
 
 
 Sammanställd 2026-09-19 från slutet av den lokalt sparade tråden **Bygg Market Intelligence Engine**, projektfiler och Git. Detta är en kort överlämning, inte hela historiken. Den gamla tråden har inte ändrats eller raderats.
